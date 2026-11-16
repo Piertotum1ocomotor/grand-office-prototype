@@ -24,7 +24,16 @@ const site = (() => {
   };
   const config = get('./site.json').catch(() => ({}));
   const backend = config.then((data) => data.backend === true);
-  const catalog = backend.then((enabled) => get(enabled ? './api/catalog' : './data/catalog.json')).catch(() => null);
+  let catalogRequest;
+  const catalog = () => {
+    catalogRequest ??= backend.then((enabled) => get(enabled ? './api/catalog' : './data/catalog.json')).catch(() => {
+      catalogRequest = undefined;
+      return null;
+    });
+    return catalogRequest;
+  };
+  let featured;
+  const getFeatured = () => (featured ??= get('./data/featured.json').catch(()=>[]));
   const datasets = new Map();
   const getDetails = async (id) => {
     if (await backend) return get('./api/products/' + id);
@@ -38,6 +47,25 @@ const site = (() => {
     }
     return datasets.get(shard).then((data) => data[id]);
   };
+  const variations = new Map();
+  function variation(parent, id) {
+    const key = parent + ':' + id;
+    if (!variations.has(key)) variations.set(key,backend.then(async enabled=>{
+      if (enabled) return get('./api/variants/' + parent + '/' + id);
+      const url = original + '/wp-json/wc/store/v1/products/' + id + '?_fields=id,parent,prices,images,is_on_backorder';
+      const response = await fetch(url,{signal:AbortSignal.timeout(4500),credentials:'omit'});
+      if (!response.ok) throw new Error('Вариант недоступен');
+      const data = await response.json();
+      if (data.id !== id || data.parent !== parent) throw new Error('Вариант не найден');
+      const price = data.prices?.currency_code==='RUB' ? Number(data.prices.price) / 10**Number(data.prices.currency_minor_unit) : 0;
+      const image = data.images?.[0]?.src;
+      return {price:Number.isFinite(price) && price>0 ? price : null,image:image?.startsWith(original+'/wp-content/uploads/') ? image : '',backorder:data.is_on_backorder===true};
+    }).catch(()=>{
+      variations.delete(key);
+      return null;
+    }));
+    return variations.get(key);
+  }
   const post = async (path, payload) => {
     const response = await fetch('./api/' + path, {
       method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)
@@ -68,5 +96,5 @@ const site = (() => {
     ['Мебель для зон ожидания','7–14 дней','waiting'],
     ['Металлическая мебель и сейфы','5–10 дней','metal']
   ];
-  return { original, email, phone, escape, normalize, format, money, session, save, config, catalog, getDetails, backend, post, mail, startCategories, projects, delivery };
+  return { original, email, phone, escape, normalize, format, money, session, save, config, catalog, getFeatured, getDetails, variation, backend, post, mail, startCategories, projects, delivery };
 })();

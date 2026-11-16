@@ -15,17 +15,28 @@ const positions = new Map();
 let previousRoute = location.hash;
 let catalogOrigin = '#/catalog';
 
-const fromProduct = ([id, name, sku, price, max, image, categories, stock, backorder, url]) => (
-  {id, name, sku, price, max, image, categories, stock, backorder, url}
+const fromProduct = ([id, name, sku, price, max, image, categories, stock, backorder, url, type, dimensions]) => (
+  {id, name, sku, price, max, image, categories, stock, backorder, url, type, dimensions}
 );
 const crumbs = (links) => '<nav class="breadcrumb" aria-label="Хлебные крошки"><a href="#/">Главная</a>' +
   links.map(([name, href]) => '<span aria-hidden="true">/</span>' +
     (href ? '<a href="' + e(href) + '">' + e(name) + '</a>' : '<span aria-current="page">' + e(name) + '</span>')).join('') + '</nav>';
 const page = (title, body, levels = []) => '<div class="shell page">' + crumbs([...levels,[title]]) + '<h1>' + e(title) + '</h1>' + body + '</div>';
 const photo = (src, alt = '', extra = '') => src ? '<img src="' + e(src) + '" alt="' + e(alt) + '" ' + extra + '>' : '<div class="no-photo" aria-label="Фото отсутствует">Гранд-Офис</div>';
-const card = (item) => `<article class="product"><a class="product-photo" href="#/product/${item.id}" aria-label="${e(item.name)}">${photo(item.image,'','loading="lazy" width="380" height="235"')}</a><div class="product-card"><h3><a href="#/product/${item.id}">${e(item.name)}</a></h3>${item.sku ? '<p class="meta">Арт. '+e(item.sku)+'</p>' : ''}<p class="price">${money(item.price,item.max)}</p><p class="small">${item.backorder ? 'Под заказ' : 'Наличие уточняется'}</p></div></article>`;
+const dimensionPattern = /(?<!\d)\d{2,4}\s*[×xх*]\s*\d{2,4}\s*[×xх*]\s*\d{2,4}(?!\d)/i;
+const dimensionsLabel = (dims) => dims?.every(Boolean) ? dims.join(' × ') + ' мм' : (dims?.[0] ? 'Ширина ' + dims[0] + ' мм' : '');
+const card = (item) => {
+  const title = item.name.replace(dimensionPattern,'').trim().replace(/[,(–-]+$/,'').trim() || item.name;
+  const values = [item.sku ? 'Арт. '+item.sku : '', dimensionsLabel(item.dimensions)].filter(Boolean);
+  return `<article class="product"><a class="product-photo" href="#/product/${item.id}" aria-label="${e(title)}">${photo(item.image,'','loading="lazy" width="380" height="235"')}</a><div class="product-card"><h3><a href="#/product/${item.id}">${e(title)}</a></h3>${values.length ? '<p class="meta">'+e(values.join(' · '))+'</p>' : ''}<p class="price">${money(item.price,item.max)}</p><p class="small">${item.backorder ? 'Под заказ' : 'Наличие уточняется'}</p></div></article>`;
+};
 const categoryCard = ([name, image, category]) => `<a class="category" href="#/catalog?c=${encodeURIComponent(category)}">${photo('./assets/'+image,'','loading="lazy"')}<span>${e(name)}</span></a>`;
-const projectCard = (p) => `<a class="category project-card" href="#/projects/${p.id}">${photo('./assets/'+p.image,'','loading="lazy"')}<span>${e(p.name)}</span></a>`;
+
+function projectShowcase() {
+  return `<div class="case-highlight"><a class="case-cover" href="#/projects/sber" aria-label="Открыть проект Сбера">${photo('./assets/sber-port.jpg','Клиентский зал Сбера с круглыми столами и деревянными стульями','loading="lazy"')}</a>
+  <div class="case-summary"><p class="small">Сбер</p><h3>Клиентский зал</h3><p>На фото — посадка за круглыми столами, высокие столы с барными стульями и мягкие места вдоль стены.</p><a class="text-link" href="#/projects/sber">Посмотреть объект</a></div></div>
+  <nav class="other-projects" aria-label="Другие объекты">${site.projects.filter(p=>p.id!=='sber').map(p=>`<a class="text-link" href="#/projects/${p.id}">${e(p.name)}</a>`).join('')}</nav>`;
+}
 
 function home() {
   return `<div class="shell">
@@ -37,11 +48,11 @@ function home() {
     </section>
     <section class="section"><div class="section-head"><h2>Мебель для офиса</h2><a class="text-link" href="#/catalog">Весь каталог</a></div>
       <div class="category-grid four">${site.startCategories.map(categoryCard).join('')}</div></section>
-    <section class="project-feature">${photo('./assets/staff.webp','Рабочая зона на несколько сотрудников','loading="lazy"')}
+    <section class="project-feature"><div class="kit-photo">${photo('./assets/table-straight.webp','Рабочий стол Riva','loading="lazy"')}${photo('./assets/chair.webp','Офисное кресло','loading="lazy"')}</div>
       <div><p class="eyebrow">Серия Riva</p><h2>Комплект рабочих мест</h2>
         <p>Столы и кресла на 1, 4 или 8 мест. Посмотрите состав или запросите расчёт по плану помещения.</p><a class="btn" href="#/project">Посмотреть комплекты</a></div>
     </section>
-    <section class="section"><div class="section-head"><h2>Наши проекты</h2><a class="text-link" href="#/projects">Все проекты</a></div><div class="category-grid four">${site.projects.map(projectCard).join('')}</div></section>
+    <section class="section"><div class="section-head"><h2>Наши проекты</h2><a class="text-link" href="#/projects">Все проекты</a></div>${projectShowcase()}</section>
     <section class="service-strip"><div><h2>Доставка и сборка</h2><p>В Перми и за её пределами. Стоимость и дату подтвердим по составу заказа и адресу.</p></div><a class="btn secondary" href="#/delivery">Условия доставки</a></section>
     </div>`;
 }
@@ -51,6 +62,7 @@ const catBySlug = new Map();
 const productById = new Map();
 function prepare(data) {
   if (!data) return;
+  productById.clear();
   data.categories.forEach((c) => {
     catById.set(c.id,c);
     if (c.slug) catBySlug.set(c.slug,c);
@@ -65,7 +77,7 @@ function categoryRoot(cat) {
 }
 function matchesCategory(item, key) {
   if (!key) return true;
-  if (key === 'chairs') return /кресло|кресла|стул|стулья/.test(normalize(item.name));
+  if (Object.hasOwn(productTypes,key)) return item.type === key;
   const chosen = catBySlug.get(key) || catById.get(Number(key));
   if (!chosen) return true;
   return item.categories.some((id) => {
@@ -78,47 +90,76 @@ function matchesCategory(item, key) {
   });
 }
 
-function findDimensions(name) {
-  const dimensions = name.match(/(\d{2,4})\s*[×xх]\s*(\d{2,4})\s*[×xх]\s*(\d{2,4})/i);
-  return dimensions ? dimensions.slice(1).map(Number) : null;
+const productTypes = {
+  tables: ['Столы', /^(?:стол(?:ы|а|ов|у|ам|ами|е|ах|ом)?|столик(?:и|а|ов)?)$/],
+  chairs: ['Кресла', /^(?:кресл(?:о|а|ов|у|ам|ами|е|ах|ом)?|стул(?:ья|а|ьев|у|ьям|ом|е)?)$/],
+  cabinets: ['Шкафы', /^(?:шкаф(?:ы|а|ов|у|ам|ами|е|ах|ом)?|гардероб(?:ы|а|ов)?)$/],
+  pedestals: ['Тумбы', /^тумб(?:а|ы|у|е|ой|ам|ах)?$/],
+  shelving: ['Стеллажи', /^стеллаж(?:и|а|ей|у|ам|ом)?$/],
+  sofas: ['Диваны', /^диван(?:ы|а|ов|у|ам|ами|е|ах|ом)?$/]
+};
+const quickTypes = ['tables','chairs','cabinets'];
+
+function searchProducts(query) {
+  const string = normalize(query).trim();
+  const entries = [...productById.values()];
+  if (!string) return entries;
+  const exact = entries.filter(entry=>normalize(entry.sku).trim()===string);
+  if (exact.length) return exact;
+  const words = string.split(/\s+/);
+  const types = new Set();
+  const terms = words.filter(word=>{
+    const key = Object.keys(productTypes).find(type=>productTypes[type][1].test(word));
+    if (key) types.add(key);
+    return !key;
+  });
+  return entries.filter(entry=>{
+    if (types.size && !types.has(entry.type)) return false;
+    const searchable = normalize(entry.name + ' ' + entry.sku);
+    return terms.every(word=>searchable.includes(word));
+  });
 }
 
 function catalogPage(settings) {
   if (!catalog) return page('Каталог', '<p class="intro">Каталог временно недоступен. <a class="text-link" href="'+site.original+'/shop/">Открыть каталог «Гранд-Офиса»</a></p>');
   const c = settings.get('c') || '';
-  const query = settings.get('q') || '';
+  const query = (settings.get('q') || '').slice(0,120);
   const sort = settings.get('sort') || '';
   const budget = Math.max(0,Number(settings.get('max')) || 0);
   const width = Math.max(0,Number(settings.get('w')) || 0);
-  const words = normalize(query).trim().split(/\s+/).filter(Boolean);
+  const includeUnknown = settings.get('unknown')==='1';
   const groups = catalog.categories.filter((entry) => !entry.parent && entry.slug).sort((a,b) => a.name.localeCompare(b.name,'ru'));
   const selected = catBySlug.get(c) || catById.get(Number(c));
-  const matches = [...productById.values()].filter((entry) => {
+  const matches = searchProducts(query).filter(entry=>{
     if (!matchesCategory(entry,c) || (budget && (entry.price == null || entry.price > budget))) return false;
-    if (width && !(findDimensions(entry.name)?.[0] <= width)) return false;
-    const searchable = normalize(entry.name + ' ' + entry.sku);
-    return words.every((word) => searchable.includes(word));
+    const itemWidth = entry.dimensions?.[0];
+    return !width || (itemWidth==null ? includeUnknown : itemWidth <= width);
   });
   if (sort === 'up') matches.sort((a,b) => (a.price ?? Infinity) - (b.price ?? Infinity));
   if (sort === 'down') matches.sort((a,b) => (b.price ?? -1) - (a.price ?? -1));
   const totalPages = Math.max(1, Math.ceil(matches.length / pageSize));
   const offset = Math.min(totalPages, Math.max(1, parseInt(settings.get('p') || '1',10) || 1));
-  const title = selected?.name || (c==='chairs' ? 'Кресла и стулья' : 'Каталог офисной мебели');
-  const pagination = (n) => {
+  const title = selected?.name || (Object.hasOwn(productTypes,c) ? productTypes[c][0] : '') || 'Каталог офисной мебели';
+  const toCatalog = (patch) => {
     const values = new URLSearchParams(settings);
-    values.set('p',n);
-    return '#/catalog?' + values;
+    for (const [key,value] of Object.entries(patch)) if (value) values.set(key,value); else values.delete(key);
+    return '#/catalog' + (values.size ? '?' + values : '');
   };
-  return page(title,`<form id="filters" class="filters-grid">
-      <label><span class="field-label">Название или артикул</span><input class="field" name="q" maxlength="120" value="${e(query)}" placeholder="Например, Riva"></label>
-      <label><span class="field-label">Категория</span><select class="field" name="c"><option value="">Все категории</option><option value="chairs" ${c==='chairs'?'selected':''}>Кресла и стулья</option>${groups.map(g=>`<option value="${g.id}" ${selected?.id===g.id?'selected':''}>${e(g.name)}</option>`).join('')}</select></label>
+  const advanced = Boolean(selected || budget || width || sort);
+  return page(title,`<div class="catalog-tools">
+    <nav class="quick-categories" aria-label="Тип товара">${['',...quickTypes].map(key=>`<a class="chip" href="${e(toCatalog({c:key,p:null,q:null}))}" ${c===key?'aria-current="page"':''}>${key ? productTypes[key][0]:'Все товары'}</a>`).join('')}</nav>
+    <details class="catalog-filters" ${advanced && matchMedia('(min-width: 721px)').matches?'open':''}><summary>Фильтры${advanced?' · применены':''}</summary>
+      <form id="filters" class="filters-grid"><input type="hidden" name="q" value="${e(query)}">
+      <label><span class="field-label">Категория</span><select class="field" name="c"><option value="">Все категории</option>${Object.entries(productTypes).map(([key,[label]])=>`<option value="${key}" ${c===key?'selected':''}>${label}</option>`).join('')}${groups.map(g=>`<option value="${g.id}" ${selected?.id===g.id?'selected':''}>${e(g.name)}</option>`).join('')}</select></label>
       <label><span class="field-label">Цена до, ₽</span><input class="field" type="number" name="max" min="0" max="100000000" value="${budget || ''}"></label>
       <label><span class="field-label">Ширина до, мм</span><input class="field" type="number" name="w" min="0" max="10000" value="${width||''}"></label>
       <label><span class="field-label">Сортировка</span><select class="field" name="sort"><option value="">По умолчанию</option><option value="up" ${sort==='up'?'selected':''}>Сначала дешевле</option><option value="down" ${sort==='down'?'selected':''}>Сначала дороже</option></select></label>
-      <button class="btn" type="submit">Применить</button></form>
-      <div class="catalog-heading"><p class="count-label">Найдено: ${new Intl.NumberFormat('ru-RU').format(matches.length)}</p>${query || selected || c || budget || width ? '<a class="text-link" href="#/catalog">Сбросить фильтры</a>':''}</div>
-      ${matches.length ? '<div class="product-grid catalog-grid">' + matches.slice((offset-1)*pageSize,offset*pageSize).map(card).join('') + '</div>' : '<div class="empty">По этому запросу ничего не найдено. Попробуйте изменить фильтры.</div>'}
-      ${totalPages > 1 ? `<nav class="pagination" aria-label="Страницы каталога">${offset>1?'<a class="btn secondary" href="'+e(pagination(offset-1))+'">Назад</a>':''}<span>Страница ${offset} из ${totalPages}</span>${offset<totalPages?'<a class="btn secondary" href="'+e(pagination(offset+1))+'">Далее</a>':''}</nav>`:''}`);
+      <button class="btn" type="submit">Применить</button>
+      <label class="unknown-width"><input type="checkbox" name="unknown" value="1" ${includeUnknown?'checked':''}> Показывать товары без указанной ширины</label></form>
+    </details></div>
+    <div class="catalog-heading"><p class="count-label">${query?'«'+e(query)+'» · ':''}Найдено: ${new Intl.NumberFormat('ru-RU').format(matches.length)}</p>${query || c || advanced ? '<a class="text-link" href="#/catalog">Сбросить</a>':''}</div>
+    ${matches.length ? '<div class="product-grid catalog-grid">' + matches.slice((offset-1)*pageSize,offset*pageSize).map(card).join('') + '</div>' : '<div class="empty">По этому запросу ничего не найдено. Попробуйте изменить фильтры.</div>'}
+    ${totalPages > 1 ? `<nav class="pagination" aria-label="Страницы каталога">${offset>1?'<a class="btn secondary" href="'+e(toCatalog({p:offset-1}))+'">Назад</a>':''}<span>Страница ${offset} из ${totalPages}</span>${offset<totalPages?'<a class="btn secondary" href="'+e(toCatalog({p:offset+1}))+'">Далее</a>':''}</nav>`:''}`);
 }
 
 function logistics(item) {
@@ -134,28 +175,29 @@ function logistics(item) {
   return local && delivery!=null ? `Ориентир по Перми: доставка от ${format(delivery)}${range?', '+range:''}. Сборка и подъём рассчитываются отдельно.` : `Для города ${city} стоимость и срок доставки уточняются по адресу.`;
 }
 
-function priceOf(item, option) {
-  if (option?.[2] != null) return option[2];
-  return item.max > item.price && option ? null : item.price;
+function priceOf(item, option, variation) {
+  return option ? variation?.price ?? option[2] ?? null : item.price;
 }
 
-function itemPage(item, detail) {
+function itemPage(item, detail, variant) {
   const [images=[],specs=[],opts=[],description=''] = detail || [];
-  const pics = images.length ? images : item.image ? [item.image] : [];
+  const baseImages = images.length ? images : item.image ? [item.image] : [];
+  const matchingPhoto = variant?.image && variant.image!==baseImages[0] ? variant.image : '';
+  const pics = matchingPhoto ? [...new Set([matchingPhoto,...baseImages])] : baseImages;
   const selected = opts.find((option)=>option[0] === site.session('selected-'+item.id, null));
-  const dimensions = findDimensions(item.name);
-  const liveStock = selected?.[3] ?? (hasBackend && !opts.length ? detail?.[5] : null);
+  const dimensions = dimensionsLabel(item.dimensions);
+  const liveStock = variant?.stock ?? selected?.[3] ?? (hasBackend && !opts.length ? detail?.[5] : null);
   return `<div class="shell page">${crumbs([['Каталог',catalogOrigin],[item.name]])}
-      <div class="product-layout"><section aria-label="Фотографии товара"><figure class="gallery">${pics[0]?photo(pics[0],item.name):photo('')}</figure>
-      ${pics.length>1 ? '<div class="gallery-thumbs">'+pics.slice(0,8).map((src,i)=>`<button type="button" data-photo="${e(src)}" aria-label="Фотография ${i+1}">${photo(src,'','loading="lazy"')}</button>`).join('')+'</div>':''}</section>
+      <div class="product-layout"><section aria-label="Фотографии товара"><figure class="gallery">${pics[0]?photo(pics[0],item.name):photo('')}</figure>${selected?'<p class="small photo-caption">'+e(matchingPhoto ? 'Фото выбранного варианта' : 'Общее фото модели')+'</p>':''}
+      ${pics.length>1 ? '<div class="gallery-thumbs">'+pics.slice(0,8).map((src,i)=>`<button type="button" data-photo="${e(src)}" data-variant-photo="${src===matchingPhoto}" aria-label="Фотография ${i+1}">${photo(src,'','loading="lazy"')}</button>`).join('')+'</div>':''}</section>
       <section class="product-info"><h1>${e(item.name)}</h1>${item.sku?'<p class="meta">Артикул '+e(item.sku)+'</p>':''}
-      <p class="product-price">${selected?(priceOf(item,selected)==null ? '<span class="small">Цена варианта уточняется</span>' : money(priceOf(item,selected))):money(item.price,item.max)}</p>
+      <p class="product-price">${selected?(priceOf(item,selected,variant)==null ? '<span class="small">Цена варианта уточняется</span>' : money(priceOf(item,selected,variant))):money(item.price,item.max)}</p>
       ${opts.length? `<label><span class="field-label">Вариант</span><select class="field" id="product-option" data-id="${item.id}"><option value="">Выберите вариант</option>${opts.map((o)=>`<option value="${o[0]}" ${o===selected?'selected':''}>${e(o[1] || ('Вариант ' + o[0]))}</option>`).join('')}</select></label>`:''}
-      <div class="logistics"><p class="stock">${liveStock>0 ? 'Доступно у поставщика: '+liveStock+' шт.' : (item.backorder?'Под заказ':'Наличие уточняется')}</p><p class="small">${e(logistics(item))}</p></div>
+      <p class="small" id="variant-status" role="status" hidden></p><div class="logistics"><p class="stock">${liveStock>0 ? 'Доступно у поставщика: '+liveStock+' шт.' : ((variant?.backorder ?? item.backorder)?'Под заказ':'Наличие уточняется')}</p><p class="small">${e(logistics(item))}</p></div>
       <div class="actions"><button class="btn" data-add="${item.id}" ${(opts.length && !selected) || liveStock===0?'disabled':''}>В корзину</button><a class="btn secondary" href="#/project?product=${item.id}">Запросить расчёт</a></div><p class="result" id="cart-result" role="status" hidden></p>
       ${item.url?'<p class="small source-link"><a class="text-link" href="'+e(item.url)+'">Карточка в действующем магазине</a></p>':''}</section></div>
       ${description?'<section class="spec"><h2>О товаре</h2><p>'+e(description)+'</p></section>':''}
-      ${dimensions? '<section class="spec"><h2>Габариты</h2><p>'+e(dimensions.join(' × '))+' мм</p></section>' : ''}
+      ${dimensions? '<section class="spec"><h2>Габариты</h2><p>'+e(dimensions)+'</p></section>' : ''}
       ${specs.length?'<section class="spec"><h2>Характеристики</h2><dl>'+specs.map(([a,b])=>'<div><dt>'+e(a)+'</dt><dd>'+e(b)+'</dd></div>').join('')+'</dl></section>':''}
       </div>`;
 }
@@ -174,8 +216,12 @@ function cartPage() {
       <input type="number" class="field" min="1" max="${row.cap || 999}" step="1" value="${row.qty}" data-qty="${i}" aria-label="Количество — ${e(row.name)}"><button data-remove="${i}">Убрать</button>
       </div>`).join('')}</section>
       <aside class="panel"><h2>Получение заказа</h2><p class="small">Город: ${e(city)}. Срок, доступность и услуги подтверждаются для вашего заказа.</p>
-      <div class="summary"><div><span>Стоимость товаров</span><strong>${cart.some((r)=>r.price==null)?'Уточняется':format(lineTotal())}</strong></div></div>
+      <div class="summary"><div><span>Стоимость товаров</span><strong id="basket-total" aria-live="polite">${cart.some((r)=>r.price==null)?'Уточняется':format(lineTotal())}</strong></div></div>
       <a class="btn" href="#/checkout">Оформить заказ</a></aside></div>`);
+}
+
+function transportNote() {
+  return hasBackend ? '' : '<p class="request-note">После заполнения откроется черновик письма. Отправьте его из своей почты, чтобы менеджер получил запрос.</p>';
 }
 
 function contactFields() {
@@ -185,7 +231,7 @@ function contactFields() {
 }
 function checkoutPage() {
   if (!cart.length) return cartPage();
-  return page('Оформление заказа',`<div class="project-demo checkout"><form id="request-form" data-kind="order" class="panel">
+  return page('Оформление заказа',`<div class="project-demo checkout"><form id="request-form" data-kind="order" class="panel">${transportNote()}
     <label><span class="field-label">Город</span><input class="field" name="city" value="${e(city)}" required maxlength="80"></label>
     <label><span class="field-label">Адрес доставки</span><input class="field" name="address" maxlength="250" autocomplete="street-address"></label>
     <label><span class="field-label">Дополнительные услуги</span><select class="field" name="delivery"><option>Доставка</option><option>Доставка и сборка</option><option>Доставка, подъём и сборка</option><option>Самовывоз по согласованию</option></select></label>
@@ -234,6 +280,7 @@ function projectPage(target, qty) {
       <div class="actions kit-actions"><button class="btn" data-check-kit hidden></button><button class="btn secondary" data-save-spec>Скачать состав</button></div>
       <p class="small"><a class="text-link" href="#/projects/workspace-layout">Схема расстановки на 8 мест</a></p></section>
       <form class="panel" id="request-form" data-kind="project" ${target?'data-product="'+target.id+'"':''}><h2 id="project-form" tabindex="-1">Запросить смету</h2>
+      ${transportNote()}
       ${target?'<p class="small">'+e(target.name)+'</p>':''}
       <label class="field-label" for="request-kit">Что рассчитать</label><select class="field" id="request-kit" name="kit"><option value="">Подбор по моему плану</option><option value="riva" ${target?'':'selected'} ${series().length===officeConfig.workspaceKit?.products.length?'':'disabled'}>Комплект Riva</option></select>
       <p class="small" id="quote-kit" aria-live="polite"></p>
@@ -245,7 +292,7 @@ function projectPage(target, qty) {
       ${contactFields()}<button class="btn" type="submit">${hasBackend?'Отправить запрос':'Открыть письмо для расчёта'}</button>
       <p class="small">В смете подтвердим стоимость с услугами, наличие всей партии и дату завершения монтажа.</p>
       ${!hasBackend?'<p class="small">'+planHelp+'</p>':''}<p class="result" role="status" hidden></p></form></div>
-      <section class="section"><div class="section-head"><h2>Выполненные проекты</h2><a class="text-link" href="#/projects">Все проекты</a></div><div class="category-grid four">${site.projects.map(projectCard).join('')}</div></section>
+      <section class="section"><div class="section-head"><h2>Выполненные проекты</h2><a class="text-link" href="#/projects">Все проекты</a></div><div class="actions"><a class="text-link" href="#/projects/sber">Клиентский зал Сбера</a></div></section>
     </div>`;
 }
 
@@ -291,7 +338,7 @@ function workspaceLayout() {
   return page('Пример расстановки на 8 мест',`<p class="intro">Два ряда по четыре стола. Сверьте расположение дверей, розеток и проходов с планом помещения.</p>
     <section class="panel layout-panel" aria-label="Схема двух рядов по четыре рабочих места">
       <div class="workspace-plan" aria-hidden="true">${[1,2,3,4,5,6,7,8].map(number=>`<span>${number}</span>`).join('')}</div>
-      ${desk ? '<p class="small">Стол Riva: '+e(findDimensions(desk.name)?.join(' × ') || 'см. карточку товара')+(findDimensions(desk.name)?' мм':'')+'. Границы проходов и места для кресел определяются по плану помещения.</p>' : ''}
+      ${desk ? '<p class="small">Стол Riva: '+e(dimensionsLabel(desk.dimensions) || 'см. карточку товара')+'. Границы проходов и места для кресел определяются по плану помещения.</p>' : ''}
       <div class="actions"><a class="btn" href="#/project?seats=8">Рассчитать 8 мест</a></div>
     </section>`,[['Проекты','#/projects']]);
 }
@@ -308,9 +355,10 @@ function infoPage(key,id) {
   }
   if (key==='projects') {
     if (id==='workspace-layout') return workspaceLayout();
+    if (id==='sber') return page('Сбер',`<div class="case-highlight case-detail"><figure class="case-cover">${photo('./assets/sber-port.jpg','Клиентский зал Сбера')}</figure><div class="case-summary"><h2>Клиентский зал</h2><p>Круглые столы с деревянными стульями, высокие столы с барными стульями и мягкие места вдоль стены.</p><a class="btn" href="#/project">Рассчитать похожий офис</a></div></div><section class="spec"><h2>Мебель в кадре</h2><dl><div><dt>Основная посадка</dt><dd>Круглые столы и стулья</dd></div><div><dt>Высокая посадка</dt><dd>Высокие столы и барные стулья</dd></div><div><dt>Мягкая зона</dt><dd>Пуфы вдоль стены</dd></div></dl></section>`,[['Проекты','#/projects']]);
     const project = site.projects.find(p=>p.id===id);
     if (project) return page(project.name,`<section class="project-feature section">${photo('./assets/'+project.image,project.name)}<div><h2>Офисная комплектация</h2><p>Для похожего пространства подберём мебель по планировке и числу рабочих мест.</p><a class="btn" href="#/project">Рассчитать комплектацию</a></div></section>`,[['Проекты','#/projects']]);
-    return page('Выполненные проекты',`<div class="category-grid four section">${site.projects.map(projectCard).join('')}</div><section class="service-strip"><div><h2>Расстановка на 8 мест</h2><p>Пример с двумя рядами рабочих столов Riva.</p></div><a class="btn secondary" href="#/projects/workspace-layout">Посмотреть схему</a></section>`);
+    return page('Выполненные проекты',`<div class="section">${projectShowcase()}</div><section class="service-strip"><div><h2>Расстановка на 8 мест</h2><p>Пример с двумя рядами рабочих столов Riva.</p></div><a class="btn secondary" href="#/projects/workspace-layout">Посмотреть схему</a></section>`);
   }
   return page('Страница не найдена','<p class="intro"><a class="text-link" href="#/">Вернуться на главную</a></p>');
 }
@@ -321,27 +369,59 @@ function getRoute() {
   return {key,id,args:new URLSearchParams(args)};
 }
 
+const loadConfig=site.config.then(config=>{officeConfig=config;});
+async function loadCatalog() {
+  if (catalog) return;
+  const raw = await site.catalog();
+  if (raw && !catalog) { catalog=raw; prepare(raw); }
+}
+
+async function loadDetail(id) {
+  if (!Number.isInteger(id) || id<1) return null;
+  const data = await site.getDetails(id).catch(()=>null);
+  if (data?.[6] && !productById.has(id)) productById.set(id,fromProduct(data[6]));
+  return data;
+}
+
+async function loadProjectItems(product) {
+  await loadConfig;
+  if (!hasBackend) {
+    const entries = await site.getFeatured();
+    for (const row of entries) if (!productById.has(row[0])) productById.set(row[0],fromProduct(row));
+  }
+  const ids = [...new Set([...(officeConfig.workspaceKit?.products || []),product].filter(Boolean))];
+  await Promise.all(ids.filter(id=>!productById.has(id)).map(loadDetail));
+}
+
 async function render(move = false) {
   const current = ++revision;
   const {key,id,args} = getRoute();
+  const product = Number(id);
+  const target = Number(args.get('product'));
+  let details, variant;
 
   document.querySelectorAll('[data-nav]').forEach(a=> a.dataset.nav===key ? a.setAttribute('aria-current','page'):a.removeAttribute('aria-current'));
-  if (key === 'catalog' || key === 'product' || key === 'project' || id === 'workspace-layout') {
+  const search = document.querySelector('#search-input');
+  if (key==='catalog') {
+    search.value=args.get('q') || '';
     if (!catalog) main.innerHTML = '<p class="shell page" role="status">Загрузка каталога…</p>';
-    await loadCatalog;
+    await loadCatalog();
+  } else if (key==='project' || id==='workspace-layout') {
+    await loadProjectItems(target);
+  } else if (key==='product') {
+    await loadConfig;
+    details = await loadDetail(product);
+    const selected = site.session('selected-'+product,null);
+    if (details?.[2]?.some(item=>item[0]===selected)) variant = await site.variation(product,selected);
   } else if (key==='delivery') await loadConfig;
   if (current!==revision) return;
   if (!key || key==='main') main.innerHTML=home();
   else if (key==='catalog') {catalogOrigin=location.hash;main.innerHTML=catalogPage(args);}
   else if (key==='project') {
-    main.innerHTML=projectPage(productById.get(Number(args.get('product'))),validSeats(args.get('seats')) || 4);
+    main.innerHTML=projectPage(productById.get(target),validSeats(args.get('seats')) || 4);
     updateEstimate();
-  } else if (key==='product' && productById.has(Number(id))) {
-    const p = productById.get(Number(id));
-    const data = await site.getDetails(p.id).catch(()=>null);
-    if (current!==revision) return;
-    main.innerHTML=itemPage(p,data);
-  } else if (key==='cart') main.innerHTML=cartPage();
+  } else if (key==='product' && productById.has(product)) main.innerHTML=itemPage(productById.get(product),details,variant);
+  else if (key==='cart') main.innerHTML=cartPage();
   else if (key==='checkout') main.innerHTML=checkoutPage();
   else main.innerHTML=infoPage(key,id);
   if (move) {
@@ -380,8 +460,16 @@ main.addEventListener('click', async (event)=>{
   const control=event.target.closest('button');
   if (!control) return;
   const {photo, add, remove, scroll} = control.dataset;
-  if (photo) main.querySelector('.gallery img').src=photo;
-  if (scroll) document.getElementById(scroll)?.scrollIntoView({block:'start'});
+  if (photo) {
+    main.querySelector('.gallery img').src=photo;
+    const caption = main.querySelector('.photo-caption');
+    if (caption) caption.textContent = control.dataset.variantPhoto==='true' ? 'Фото выбранного варианта' : 'Общее фото модели';
+  }
+  if (scroll) {
+    const target = document.getElementById(scroll);
+    target?.focus({preventScroll:true});
+    target?.scrollIntoView({block:'start'});
+  }
   if (control.hasAttribute('data-save-spec')) downloadSpec();
   if (control.hasAttribute('data-check-kit')) {
     const form = document.querySelector('#request-form');
@@ -390,18 +478,25 @@ main.addEventListener('click', async (event)=>{
     updateEstimate();
     document.getElementById('project-form').focus();
   }
-  if (remove!==undefined) { cart.splice(Number(remove),1);saveCart();render(); }
+  if (remove!==undefined) {
+    cart.splice(Number(remove),1);
+    saveCart();
+    await render();
+    const next = main.querySelector(`[data-remove="${Math.min(Number(remove),cart.length-1)}"]`) || main.querySelector('.btn');
+    next?.focus();
+  }
   if (!add) return;
   const item = productById.get(Number(add));
   const choice = Number(document.querySelector('#product-option')?.value || 0);
   const data = await site.getDetails(item.id).catch(()=>null);
   const option = data?.[2]?.find(o=>o[0]===choice);
+  const variation = option ? await site.variation(item.id,choice) : null;
   const key = item.id + ':' + choice;
   const row=cart.find(r=>r.key===key);
-  const cap = option?.[3] ?? (hasBackend && !data?.[2]?.length ? data?.[5] : null) ?? 999;
+  const cap = variation?.stock ?? option?.[3] ?? (hasBackend && !data?.[2]?.length ? data?.[5] : null) ?? 999;
   if (!cap) return;
   if (row) row.qty=Math.min(cap,999,row.qty+1);
-  else cart.push({key,id:item.id,choice,variant:option?.[1],name:item.name,sku:item.sku,image:item.image,price:priceOf(item,option),qty:1,cap});
+  else cart.push({key,id:item.id,choice,variant:option?.[1],name:item.name,sku:item.sku,image:variation?.image || item.image,price:priceOf(item,option,variation),qty:1,cap});
   saveCart();
   const result=main.querySelector('#cart-result');
   if (result) { result.hidden=false;result.innerHTML='Товар добавлен. <a class="text-link" href="#/cart">Открыть корзину</a>'; }
@@ -418,12 +513,18 @@ main.addEventListener('change',event=>{
   if (element.id==='product-option') {
     const choice=Number(element.value);
     site.save('selected-'+element.dataset.id,choice);
-    render().then(()=>document.querySelector('#product-option')?.focus());
+    const button = main.querySelector('[data-add]');
+    const status = main.querySelector('#variant-status');
+    if (button) button.disabled = true;
+    if (status && choice) {status.hidden=false;status.textContent='Загружаем фото и цену варианта…';}
+    render().then(()=>document.querySelector('#product-option')?.focus({preventScroll:true}));
   }
   if ('qty' in element.dataset) {
     const selected=cart[Number(element.dataset.qty)];
     selected.qty=Math.max(1,Math.min(selected.cap || 999,Math.trunc(element.valueAsNumber)||1));
-    saveCart();render();
+    element.value = selected.qty;
+    saveCart();
+    document.querySelector('#basket-total').textContent = cart.some(row=>row.price==null) ? 'Уточняется' : format(lineTotal());
   }
 });
 
@@ -503,18 +604,17 @@ dialog.addEventListener('close',()=>{
   if (dialog.returnValue!=='save' || !cityInput.value.trim()) return;
   city=cityInput.value.trim();site.save('city',city);document.querySelector('#city-name').textContent=city;
   const form=document.querySelector('#request-form');
-  if (form?.dataset.kind==='project') { form.elements.city.value=city; updateEstimate(); }
-  else render();
+  if (form) {
+    form.elements.city.value=city;
+    if (form.dataset.kind==='project') updateEstimate();
+  } else render();
 });
 document.querySelector('#city-name').textContent=city;
 saveCart();
-const loadConfig=site.config.then(config=>{officeConfig=config;});
-const loadCatalog=Promise.all([site.catalog,loadConfig]).then(([data])=>{catalog=data;prepare(data);});
-site.backend.then(value=>{if(value){hasBackend=true;if(['project','checkout'].includes(getRoute().key)) render();}});
+site.backend.then(value=>{hasBackend=value;return render();});
 window.addEventListener('hashchange',()=>{
   if (location.hash==='#main') return;
   positions.set(previousRoute,window.scrollY);
   previousRoute=location.hash;
   render(true);
 });
-render();

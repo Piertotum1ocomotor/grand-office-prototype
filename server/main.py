@@ -14,9 +14,11 @@ from pathlib import Path
 import re
 import secrets
 import sqlite3
+import ssl
 import time
+from threading import Lock
 from urllib.parse import urlsplit, parse_qs
-from urllib.request import Request, HTTPRedirectHandler, build_opener
+from urllib.request import Request, HTTPRedirectHandler, HTTPSHandler, build_opener
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -24,6 +26,9 @@ DB = Path(os.environ.get('GRAND_DB', ROOT / 'data-private/store.sqlite3'))
 ADMIN_USER = os.environ.get('GRAND_ADMIN_USER', 'office')
 ADMIN_PASSWORD = os.environ.get('GRAND_ADMIN_PASSWORD', '')
 EXPRO_URL = os.environ.get('GRAND_EXPRO_URL', '')
+SOURCE_STORE = 'https://grand-office59.ru'
+recent_variants = {}
+variant_lock = Lock()
 MAX_FILE = 8 * 1024 * 1024
 MAX_FEED = 30 * 1024 * 1024
 STALE_AFTER = timedelta(hours=float(os.environ.get('GRAND_STOCK_TTL_HOURS', '36')))
@@ -139,7 +144,13 @@ def public_detail(product):
         content = db.execute('SELECT description FROM product_content WHERE product=?',(product,)).fetchone()
     options = [o + list(combined(edits.get(o[0]),suppliers.get(o[0]))) if o[0] in edits or o[0] in suppliers else o for o in original[2]]
     description = content['description'] if content and content['description'] is not None else original[3]
-    return [original[0],original[1],options,description,original[4],combined(edits.get(0),suppliers.get(0))[1]]
+    summary = record(product).copy()
+    price,_ = combined(edits.get(0),suppliers.get(0))
+    if price is not None: summary[3:5] = [price,None]
+    with database() as db:
+        name = db.execute('SELECT name FROM product_content WHERE product=?',(product,)).fetchone()
+    if name and name['name']: summary[1] = name['name']
+    return [original[0],original[1],options,description,original[4],combined(edits.get(0),suppliers.get(0))[1],summary]
 
 def text(payload, key, size, required=False):
     value = payload.get(key,'')
@@ -202,6 +213,49 @@ def attachment(file):
     safe_name = next((a for a in reversed(re.split(r'[\\/]',name)) if a), 'attachment')
     return safe_name,kind,content
 
+def cached_source_variant(product,variant):
+    with variant_lock:
+        found = recent_variants.get((product,variant))
+        return found[1] if found and time.monotonic()-found[0]<600 else {}
+
+def source_variant(product,variant):
+    found = cached_source_variant(product,variant)
+    if found:
+        return found
+    url = f'{SOURCE_STORE}/wp-json/wc/store/v1/products/{variant}?_fields=id,parent,prices,images,is_on_backorder'
+    try:
+        with verified_opener().open(Request(url,headers={'User-Agent':'Grand Office storefront'}),timeout=3.5) as response:
+            raw = response.read(256 * 1024 + 1)
+        if len(raw) > 256 * 1024:
+            return {}
+        data = json.loads(raw)
+        if not isinstance(data,dict) or data.get('id')!=variant or data.get('parent')!=product:
+            return {}
+        pricing = data.get('prices') or {}
+        price = int(pricing.get('price') or 0) / 10**int(pricing.get('currency_minor_unit',0)) if pricing.get('currency_code')=='RUB' else None
+        images = data.get('images') or []
+        image = images[0].get('src') if images and isinstance(images[0],dict) else ''
+        if not isinstance(image,str) or not image.startswith(SOURCE_STORE+'/wp-content/uploads/'):
+            image = ''
+        payload = {'price':price if price and price>0 else None,'image':image,'backorder':data.get('is_on_backorder') is True}
+    except (OSError,ValueError,TypeError,AttributeError):
+        return {}
+    with variant_lock:
+        if len(recent_variants)>=512:
+            recent_variants.pop(next(iter(recent_variants)))
+        recent_variants[product,variant] = (time.monotonic(),payload)
+    return payload
+
+def public_variant(product,variant):
+    if not variant or variant_id(product,variant)!=variant:
+        raise Problem('Вариант не найден.',404)
+    public = source_variant(product,variant)
+    with database() as db:
+        manual = edit_map(db,'edits',product).get(variant)
+        supplier = edit_map(db,'supplier_values',product).get(variant)
+    price,stock = combined(manual,supplier)
+    return {**public,'price':price if price is not None else public.get('price'),'stock':stock}
+
 def request_order(db, lines):
     if not isinstance(lines,list) or not 1<=len(lines)<=100:
         raise Problem('Проверьте состав заказа.')
@@ -221,7 +275,8 @@ def request_order(db, lines):
         edited_price,current = combined(edit,supplier)
         if current is not None and qty > current:
             raise Problem(f'Уточните количество для товара {row[1]}.')
-        price = edited_price if edited_price is not None else row[3] if not option or not row[4] or row[4] <= (row[3] or 0) else None
+        source_price = cached_source_variant(product,option).get('price') if option else row[3]
+        price = edited_price if edited_price is not None else source_price
         label_override = db.execute('SELECT name FROM product_content WHERE product=?',(product,)).fetchone()
         label = next((v[1] for v in options if v[0]==option),'')
         result.append({'id':product,'sku':row[2],'name':(label_override['name'] if label_override and label_override['name'] else row[1]),'variant':label,'qty':qty,'price':price})
@@ -334,13 +389,18 @@ class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self,*args,**kwargs):
         return None
 
+def verified_opener():
+    system_bundle = Path('/etc/ssl/cert.pem')
+    fallback = str(system_bundle) if not ssl.get_default_verify_paths().cafile and system_bundle.is_file() else None
+    return build_opener(NoRedirect(), HTTPSHandler(context=ssl.create_default_context(cafile=fallback)))
+
 def feed_rows(supplier,data):
     if supplier=='expro' and not data:
         endpoint=urlsplit(EXPRO_URL)
         if endpoint.scheme!='https' or endpoint.hostname not in {'expro.ru','www.expro.ru'} or endpoint.username is not None:
             raise Problem('Задайте ссылку XML «Экспро» в настройке сервера.')
         try:
-            with build_opener(NoRedirect()).open(Request(EXPRO_URL,headers={'User-Agent':'Grand Office catalog sync'}),timeout=20) as response:
+            with verified_opener().open(Request(EXPRO_URL,headers={'User-Agent':'Grand Office catalog sync'}),timeout=20) as response:
                 raw=response.read(MAX_FEED+1)
             if len(raw)>MAX_FEED or re.search(rb'<!DOCTYPE|<!ENTITY',raw,re.I):
                 raise Problem('Неподдерживаемый XML.')
@@ -434,6 +494,8 @@ class SiteServer(BaseHTTPRequestHandler):
             return self.response(200,{'ok':True})
         if path=='/api/catalog':
             return self.response(200,public_catalog())
+        if match := re.fullmatch(r'/api/variants/(\d+)/(\d+)',path):
+            return self.response(200,public_variant(*map(int,match.groups())))
         if re.fullmatch(r'/api/products/\d+',path):
             return self.response(200,public_detail(int(path.rsplit('/',1)[-1])))
         if path.startswith('/office') or path.startswith('/api/office'):
