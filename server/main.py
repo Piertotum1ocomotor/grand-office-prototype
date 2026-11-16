@@ -32,7 +32,7 @@ variant_lock = Lock()
 MAX_FILE = 8 * 1024 * 1024
 MAX_FEED = 30 * 1024 * 1024
 STALE_AFTER = timedelta(hours=float(os.environ.get('GRAND_STOCK_TTL_HOURS', '36')))
-FILES = {'index.html', 'style.css', 'store.js', 'app.js', 'site.json'}
+FILES = {'index.html', 'style.css', 'store.js', 'app.js', 'workspace.js', 'site.json'}
 ALLOWED_TYPES = {
     'application/pdf': (b'%PDF-',),
     'image/jpeg': (b'\xff\xd8\xff',),
@@ -286,6 +286,38 @@ def request_order(db, lines):
 def site_config():
     return json.loads((ROOT / 'site.json').read_text(encoding='utf-8'))
 
+def quote_selection(data,kit,count):
+    supplied = data.get('kitLines')
+    if supplied is None:
+        return [(identifier,count) for identifier in kit['products']]
+    groups = {group['id']: group for group in kit.get('groups', [])}
+    if not isinstance(supplied,list) or not 1 <= len(supplied) <= len(groups):
+        raise Problem('Проверьте состав комплекта.')
+    selected = {}
+    for line in supplied:
+        if not isinstance(line,dict):
+            raise Problem('Проверьте позиции комплекта.')
+        choice = text(line,'group',35,True)
+        item_id = integer(line.get('id'),1,999_999_999)
+        quantity = integer(line.get('qty'),1,5000)
+        if choice not in groups or choice in selected or item_id not in groups[choice]['models']:
+            raise Problem('Проверьте выбранные модели.')
+        selected[choice] = (item_id,quantity)
+    if any(key not in selected for key,group in groups.items() if not group.get('optional')):
+        raise Problem('Выберите столы и кресла для комплекта.')
+    return list(selected.values())
+
+def quote_plan(data):
+    plan = data.get('roomPlan')
+    if not plan:
+        return None
+    if not isinstance(plan,dict) or plan.get('layout') not in ('single','double','islands'):
+        raise Problem('Проверьте план расстановки.')
+    metrics = {key:amount(plan.get(key),maximum) for key,maximum in [('width',60),('depth',60),('gap',4)]}
+    if any(metrics[key] is None or metrics[key]<minimum for key,minimum in [('width',2),('depth',2),('gap',0.5)]):
+        raise Problem('Проверьте размеры комнаты и расстояние между рядами.')
+    return {**metrics,'layout':plan['layout']}
+
 def project_request(db,data):
     count = integer(data.get('seats'),1,5000)
     deadline = text(data,'date',20)
@@ -306,7 +338,7 @@ def project_request(db,data):
     if not kit or choice != kit['id']:
         raise Problem('Выберите комплект из списка.')
     output = []
-    for product in kit['products']:
+    for product,quantity in quote_selection(data,kit,count):
         product_row = record(product)
         manual = edit_map(db,'edits',product).get(0)
         supplier = edit_map(db,'supplier_values',product).get(0)
@@ -314,15 +346,15 @@ def project_request(db,data):
         content = db.execute('SELECT name FROM product_content WHERE product=?',(product,)).fetchone()
         output.append({
             'id': product, 'name': (content['name'] if content and content['name'] else product_row[1]),
-            'sku': product_row[2], 'qty': count, 'price': updated_price if updated_price is not None else product_row[3]
+            'sku': product_row[2], 'qty': quantity, 'price': updated_price if updated_price is not None else product_row[3]
         })
     rates = config.get('localRates')
     local = text(data,'city',80,True).casefold() == config.get('officeCity','').casefold()
-    furniture = None if any(row['price'] is None for row in output) else round(sum(row['price'] * count for row in output),2)
+    furniture = None if any(row['price'] is None for row in output) else round(sum(row['price'] * row['qty'] for row in output),2)
     delivery = rates['deliveryFrom'] if local and rates else None
     assembly = round(furniture * rates['assemblyPercent'] / 100,2) if local and rates and furniture is not None else None
     total = round(furniture + delivery + assembly,2) if all(value is not None for value in (furniture,delivery,assembly)) else None
-    payload.update(kit=kit['name'],lines=output,estimate={
+    payload.update(kit=kit['name'],lines=output,roomPlan=quote_plan(data),estimate={
         'furniture':furniture,'deliveryFrom':delivery,'assembly':assembly,'totalFrom':total
     })
     return payload
@@ -527,7 +559,7 @@ class SiteServer(BaseHTTPRequestHandler):
                     return self.response(200,row['file_data'],row['file_type'],{'Content-Disposition':f'attachment; filename="attachment.{ext}"'})
             raise Problem('Страница не найдена.',404)
         resource=path.strip('/')
-        allowed = resource in FILES or re.fullmatch(r'assets/[A-Za-z0-9_.-]+|data/catalog\.json|data/products/[0-9]+\.json',resource)
+        allowed = resource in FILES or re.fullmatch(r'assets/[A-Za-z0-9_.-]+|data/(?:catalog|featured)\.json|data/products/[0-9]+\.json',resource)
         if path=='/':
             return self.static(ROOT/'index.html')
         if allowed:

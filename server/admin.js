@@ -21,6 +21,7 @@ async function requests() {
       <p>${html(p.name)} · ${html(p.contact)} · ${html(p.city)}</p>
       ${p.address?'<p>Адрес и условия подъёма: '+html(p.address)+'</p>':''}${p.task?'<p>'+html(p.task)+'</p>':''}
       ${p.kit?'<p><strong>'+html(p.kit)+'</strong></p>':''}${p.product?'<p>Товар: '+html(p.product)+'</p>':''}
+      ${p.roomPlan?'<p>План: '+html(p.roomPlan.width)+' × '+html(p.roomPlan.depth)+' м. '+html(({single:'Один ряд',double:'Два ряда',islands:'Группы по четыре'})[p.roomPlan.layout])+', между рядами или группами '+html(p.roomPlan.gap)+' м.</p>':''}
       ${p.seats?'<p>Мест: '+html(p.seats)+(p.date?' · дата готовности офиса: '+html(p.date):'')+'</p>':''}
       ${p.lines?'<ul>'+p.lines.map(r=>'<li>'+[html(r.name),html(r.variant),r.qty+' шт.',r.price==null?'цена уточняется':html(r.price)+' ₽ за шт.'].filter(Boolean).join(' · ')+'</li>').join('')+'</ul>':''}
       ${p.estimate?.totalFrom==null?'':'<p>Ориентир без подъёма: от '+html(new Intl.NumberFormat('ru-RU').format(p.estimate.totalFrom))+' ₽</p>'}

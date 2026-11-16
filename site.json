@@ -3,11 +3,52 @@
   "workspaceKit": {
     "id": "riva",
     "name": "Комплект Riva",
-    "products": [887, 244689]
+    "products": [
+      887,
+      244689
+    ],
+    "groups": [
+      {
+        "id": "desk",
+        "label": "Столы",
+        "models": [
+          887,
+          877,
+          188286
+        ]
+      },
+      {
+        "id": "chair",
+        "label": "Кресла",
+        "models": [
+          244689,
+          2609,
+          157457
+        ]
+      },
+      {
+        "id": "storage",
+        "label": "Тумбы",
+        "models": [
+          986,
+          1046
+        ],
+        "optional": true
+      }
+    ]
   },
   "localRates": {
     "deliveryFrom": 1500,
     "assemblyPercent": 10,
     "liftFromPerFloor": 800
+  },
+  "contacts": {
+    "address": "Пермь, ул. Екатерининская, 10",
+    "mapId": "220992897587",
+    "stop": "Разгуляй",
+    "coordinates": [
+      56.262025,
+      58.015971
+    ]
   }
 }

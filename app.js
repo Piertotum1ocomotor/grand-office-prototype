@@ -33,9 +33,16 @@ const card = (item) => {
 const categoryCard = ([name, image, category]) => `<a class="category" href="#/catalog?c=${encodeURIComponent(category)}">${photo('./assets/'+image,'','loading="lazy"')}<span>${e(name)}</span></a>`;
 
 function projectShowcase() {
-  return `<div class="case-highlight"><a class="case-cover" href="#/projects/sber" aria-label="Открыть проект Сбера">${photo('./assets/sber-port.jpg','Клиентский зал Сбера с круглыми столами и деревянными стульями','loading="lazy"')}</a>
-  <div class="case-summary"><p class="small">Сбер</p><h3>Клиентский зал</h3><p>На фото — посадка за круглыми столами, высокие столы с барными стульями и мягкие места вдоль стены.</p><a class="text-link" href="#/projects/sber">Посмотреть объект</a></div></div>
-  <nav class="other-projects" aria-label="Другие объекты">${site.projects.filter(p=>p.id!=='sber').map(p=>`<a class="text-link" href="#/projects/${p.id}">${e(p.name)}</a>`).join('')}</nav>`;
+  return `<div class="project-carousel"><ul class="project-track" tabindex="0" aria-label="Проекты Гранд-Офиса">${site.projects.map(project=>`<li><a class="project-tile" href="#/projects/${project.id}">${photo('./assets/'+project.image,project.zone,'loading="lazy" width="656" height="505"')}<div><h3>${e(project.name)}</h3><p>${e(project.zone)}</p></div></a></li>`).join('')}</ul>
+  <div class="actions carousel-buttons"><button class="btn secondary" data-projects="-1" aria-label="Предыдущий проект">Назад</button><button class="btn secondary" data-projects="1" aria-label="Следующий проект">Далее</button></div></div>`;
+}
+
+function serviceFacts() {
+  const rates = officeConfig.localRates;
+  if (!rates) return '';
+  return `<dl class="service-facts"><div><dt>Доставка по Перми</dt><dd>от ${format(rates.deliveryFrom)}</dd><dd class="fact-description">Подтвердим по адресу и объёму заказа.</dd></div>
+    <div><dt>Подъём</dt><dd>от ${format(rates.liftFromPerFloor)} за этаж</dd><dd class="fact-description">Зависит от лифта, габаритов и этажа.</dd></div>
+    <div><dt>Стандартная сборка</dt><dd>${rates.assemblyPercent}%</dd><dd class="fact-description">От стоимости мебели. Дату согласуем.</dd></div></dl>`;
 }
 
 function home() {
@@ -48,17 +55,19 @@ function home() {
     </section>
     <section class="section"><div class="section-head"><h2>Мебель для офиса</h2><a class="text-link" href="#/catalog">Весь каталог</a></div>
       <div class="category-grid four">${site.startCategories.map(categoryCard).join('')}</div></section>
-    <section class="project-feature"><div class="kit-photo">${photo('./assets/table-straight.webp','Рабочий стол Riva','loading="lazy"')}${photo('./assets/chair.webp','Офисное кресло','loading="lazy"')}</div>
-      <div><p class="eyebrow">Серия Riva</p><h2>Комплект рабочих мест</h2>
-        <p>Столы и кресла на 1, 4 или 8 мест. Посмотрите состав или запросите расчёт по плану помещения.</p><a class="btn" href="#/project">Посмотреть комплекты</a></div>
+    <section class="project-feature kit-hero">${photo('./assets/riva-interior.webp','Пример рабочих мест с мебелью Riva в интерьере','loading="lazy" width="900" height="720"')}
+      <div><p class="eyebrow">Серия Riva</p><h2>Соберите рабочие места</h2>
+        <p>Выберите столы, кресла и тумбы. Посмотрите цену каждой позиции и попробуйте расставить мебель по размерам комнаты.</p>
+        <div class="actions"><a class="btn" href="#/project?section=kit">Собрать комплект</a><a class="text-link" href="#/projects/workspace-layout">Открыть планировщик</a></div></div>
     </section>
     <section class="section"><div class="section-head"><h2>Наши проекты</h2><a class="text-link" href="#/projects">Все проекты</a></div>${projectShowcase()}</section>
-    <section class="service-strip"><div><h2>Доставка и сборка</h2><p>В Перми и за её пределами. Стоимость и дату подтвердим по составу заказа и адресу.</p></div><a class="btn secondary" href="#/delivery">Условия доставки</a></section>
+    <section class="section home-delivery"><div class="section-head"><h2>Доставка и сборка</h2><a class="text-link" href="#/delivery">Сроки и условия</a></div>${serviceFacts()}</section>
     </div>`;
 }
 
 const catById = new Map();
 const catBySlug = new Map();
+const catChildren = new Map();
 const productById = new Map();
 function prepare(data) {
   if (!data) return;
@@ -66,6 +75,8 @@ function prepare(data) {
   data.categories.forEach((c) => {
     catById.set(c.id,c);
     if (c.slug) catBySlug.set(c.slug,c);
+    if (!catChildren.has(c.parent)) catChildren.set(c.parent,[]);
+    catChildren.get(c.parent).push(c);
   });
   data.items.forEach((row) => productById.set(row[0],fromProduct(row)));
 }
@@ -120,6 +131,20 @@ function searchProducts(query) {
   });
 }
 
+function catalogueSections(groups,c,toCatalog) {
+  const selected = catBySlug.get(c) || catById.get(Number(c));
+  const path = new Set();
+  for (let item=selected; item && !path.has(item.id); item=catById.get(item.parent)) path.add(item.id);
+  const link = (entry,title=entry.name) => `<a href="${e(toCatalog({c:entry.id,q:null,p:null}))}" ${entry.id===selected?.id?'aria-current="page"':''}>${e(title)}</a>`;
+  const branch = (entry,depth=0) => {
+    const children = catChildren.get(entry.id);
+    if (!children?.length || depth===10) return link(entry);
+    return `<details ${path.has(entry.id)?'open':''}><summary>${e(entry.name)}</summary><div>${link(entry,depth?'Все в подразделе':'Все в разделе')}${children.map(child=>branch(child,depth+1)).join('')}</div></details>`;
+  };
+  return `<details class="catalog-directory" ${matchMedia('(min-width: 961px)').matches?'open':''}>
+    <summary>Разделы каталога</summary><nav aria-label="Разделы каталога">${groups.map(group=>branch(group)).join('')}</nav></details>`;
+}
+
 function catalogPage(settings) {
   if (!catalog) return page('Каталог', '<p class="intro">Каталог временно недоступен. <a class="text-link" href="'+site.original+'/shop/">Открыть каталог «Гранд-Офиса»</a></p>');
   const c = settings.get('c') || '';
@@ -146,7 +171,7 @@ function catalogPage(settings) {
     return '#/catalog' + (values.size ? '?' + values : '');
   };
   const advanced = Boolean(selected || budget || width || sort);
-  return page(title,`<div class="catalog-tools">
+  return page(title,`<div class="catalog-shell"><aside class="catalog-sidebar">${catalogueSections(groups,c,toCatalog)}</aside><div class="catalog-results"><div class="catalog-tools">
     <nav class="quick-categories" aria-label="Тип товара">${['',...quickTypes].map(key=>`<a class="chip" href="${e(toCatalog({c:key,p:null,q:null}))}" ${c===key?'aria-current="page"':''}>${key ? productTypes[key][0]:'Все товары'}</a>`).join('')}</nav>
     <details class="catalog-filters" ${advanced && matchMedia('(min-width: 721px)').matches?'open':''}><summary>Фильтры${advanced?' · применены':''}</summary>
       <form id="filters" class="filters-grid"><input type="hidden" name="q" value="${e(query)}">
@@ -159,7 +184,7 @@ function catalogPage(settings) {
     </details></div>
     <div class="catalog-heading"><p class="count-label">${query?'«'+e(query)+'» · ':''}Найдено: ${new Intl.NumberFormat('ru-RU').format(matches.length)}</p>${query || c || advanced ? '<a class="text-link" href="#/catalog">Сбросить</a>':''}</div>
     ${matches.length ? '<div class="product-grid catalog-grid">' + matches.slice((offset-1)*pageSize,offset*pageSize).map(card).join('') + '</div>' : '<div class="empty">По этому запросу ничего не найдено. Попробуйте изменить фильтры.</div>'}
-    ${totalPages > 1 ? `<nav class="pagination" aria-label="Страницы каталога">${offset>1?'<a class="btn secondary" href="'+e(toCatalog({p:offset-1}))+'">Назад</a>':''}<span>Страница ${offset} из ${totalPages}</span>${offset<totalPages?'<a class="btn secondary" href="'+e(toCatalog({p:offset+1}))+'">Далее</a>':''}</nav>`:''}`);
+    ${totalPages > 1 ? `<nav class="pagination" aria-label="Страницы каталога">${offset>1?'<a class="btn secondary" href="'+e(toCatalog({p:offset-1}))+'">Назад</a>':''}<span>Страница ${offset} из ${totalPages}</span>${offset<totalPages?'<a class="btn secondary" href="'+e(toCatalog({p:offset+1}))+'">Далее</a>':''}</nav>`:''}</div></div>`);
 }
 
 function logistics(item) {
@@ -240,8 +265,12 @@ function checkoutPage() {
     <aside class="panel"><h2>Состав заказа</h2><div class="summary">${cart.map((row)=>`<div><span>${e(row.name)} × ${row.qty}</span><span>${row.price==null?'Уточняется':format(row.price*row.qty)}</span></div>`).join('')}</div></aside></div>`,[['Корзина','#/cart']]);
 }
 
-function series() {
-  return (officeConfig.workspaceKit?.products || []).map((id)=>productById.get(id)).filter(Boolean);
+let kitPreferences = site.session('kit-preferences',{});
+let roomPlan = workspace.planSettings(site.session('room-plan',{}));
+if (!kitPreferences || typeof kitPreferences!=='object') kitPreferences = {};
+
+function kitGroups() {
+  return officeConfig.workspaceKit?.groups || [];
 }
 
 function validSeats(value) {
@@ -254,18 +283,59 @@ function seatsLabel(count) {
   return count + ' ' + ({one:'место',few:'места',many:'мест',other:'мест'})[ending];
 }
 
+function kitSelection(qty) {
+  return kitGroups().map(group=>{
+    const saved = kitPreferences[group.id] || {};
+    const available = group.models.filter(id=>productById.has(id));
+    const id = available.includes(saved.id) || (group.optional && saved.id===0) ? saved.id : (group.optional ? 0 : available[0]);
+    return {group,id,product:productById.get(id),qty:id ? (validSeats(saved.qty) || qty) : 0};
+  });
+}
+
 function kitEstimate(qty, destination) {
-  const products = series();
-  const ready = products.length > 0 && products.length === officeConfig.workspaceKit?.products.length;
-  const priced = ready && products.every((item)=>item.price!=null);
-  const perSeat = priced ? products.reduce((sum,item)=>sum+item.price,0) : null;
-  const value = perSeat == null ? null : Math.round(perSeat * qty * 100) / 100;
+  const selection = kitSelection(qty);
+  const products = selection.filter(item=>item.product && item.qty);
+  const ready = selection.length > 0 && selection.every(item=>item.group.optional || item.product);
+  const priced = ready && products.every(item=>item.product.price!=null);
+  const value = priced ? Math.round(products.reduce((sum,item)=>sum+item.product.price*item.qty,0)*100)/100 : null;
   const local = normalize(destination).trim() === normalize(officeConfig.officeCity);
   const rates = officeConfig.localRates;
-  const assembly = local && rates && value != null ? Math.round(value * rates.assemblyPercent) / 100 : null;
+  const assembly = local && rates && value != null ? Math.round(value*rates.assemblyPercent)/100 : null;
   const delivery = local && rates ? rates.deliveryFrom : null;
   const total = value == null || assembly == null || delivery == null ? null : Math.round((value+assembly+delivery)*100)/100;
-  return {products,ready,qty,perSeat,value,assembly,delivery,total,local,rates,from:products.some(item=>item.max>item.price)};
+  return {products,ready,qty,value,assembly,delivery,total,local,rates,from:products.some(({product})=>product.max>product.price)};
+}
+
+function kitRows(qty) {
+  return kitSelection(qty).map(({group,id,qty:units})=>{
+    const options = group.models.map(id=>productById.get(id)).filter(Boolean);
+    return `<div class="kit-row"><label><span class="field-label">${e(group.label)}</span><select class="field" data-kit-model="${group.id}">
+      ${group.optional?'<option value="0">Не добавлять</option>':''}${options.map(item=>`<option value="${item.id}" ${id===item.id?'selected':''}>${e(item.name.replace(dimensionPattern,'').trim())} · ${e(dimensionsLabel(item.dimensions) || 'размер уточняется')} · ${money(item.price,item.max)}</option>`).join('')}</select></label>
+      <label><span class="field-label">Количество</span><input class="field" type="number" min="1" max="5000" value="${units}" data-kit-qty="${group.id}" aria-label="Количество — ${e(group.label)}" ${id?'':'disabled'}></label></div>`;
+  }).join('');
+}
+
+function syncKitRows(qty) {
+  for (const {group,id,qty:units} of kitSelection(qty)) {
+    const field = document.querySelector(`[data-kit-qty="${group.id}"]`);
+    if (!field) continue;
+    field.value = units;
+    field.disabled = !id;
+  }
+}
+
+function updateKitChoice(element) {
+  const group = element.dataset.kitModel || element.dataset.kitQty;
+  const value = Number(element.value);
+  const previous = kitPreferences[group] || {};
+  if (element.dataset.kitModel) {
+    kitPreferences[group] = {...previous,id:value};
+    if (group==='storage' && !previous.id && value) kitPreferences[group].qty=1;
+  } else if (validSeats(value)) kitPreferences[group] = {...previous,qty:value};
+  site.save('kit-preferences',kitPreferences);
+  const count = Number(document.querySelector('#set-count').value);
+  syncKitRows(count);
+  updateEstimate();
 }
 
 function projectPage(target, qty) {
@@ -274,15 +344,15 @@ function projectPage(target, qty) {
   return `<div class="shell page">${crumbs([['Комплектация офисов']])}<section class="project-hero"><div class="copy"><h1>Комплектация офисов</h1><p class="intro">Подберём мебель, подготовим планировку и смету, организуем доставку и монтаж.</p><button class="btn" data-scroll="project-form">Получить расчёт</button><p class="small form-hint">${planHelp}</p></div>${photo('./assets/meeting.webp','Стол и кресла в переговорной')}</section>
     <section class="section"><div class="section-head"><h2>Этапы комплектации</h2></div><div class="steps">
     <div><h3>Задача и план</h3><p>Уточняем число мест, сроки, планировку и бюджет.</p></div><div><h3>Подбор и смета</h3><p>Согласуем модели, материалы, состав и стоимость поставки.</p></div><div><h3>Доставка и монтаж</h3><p>После согласования договора поставляем и монтируем мебель по графику.</p></div></div></section>
-    <div class="project-demo"><section class="panel"><h2>Комплект Riva</h2><p class="small">Стол и кресло на каждое рабочее место.</p>
-      <label class="field-label" for="set-count">Количество рабочих мест</label><select class="field" id="set-count">${choices.map(count=>`<option value="${count}" ${count===qty?'selected':''}>${seatsLabel(count)}</option>`).join('')}</select><div class="summary" id="estimate" aria-live="polite"></div>
+    <div class="project-demo"><section class="panel" id="kit-builder" tabindex="-1"><h2>Соберите комплект Riva</h2><p class="small">Количество столов и кресел по умолчанию совпадает с числом мест. Любую позицию можно заменить.</p>
+      <label class="field-label" for="set-count">Количество рабочих мест</label><select class="field" id="set-count">${choices.map(count=>`<option value="${count}" ${count===qty?'selected':''}>${seatsLabel(count)}</option>`).join('')}</select><div class="kit-choices">${kitRows(qty)}</div><div class="summary" id="estimate" aria-live="polite"></div>
       <div id="kit-availability"></div>
       <div class="actions kit-actions"><button class="btn" data-check-kit hidden></button><button class="btn secondary" data-save-spec>Скачать состав</button></div>
-      <p class="small"><a class="text-link" href="#/projects/workspace-layout">Схема расстановки на 8 мест</a></p></section>
+      <p class="small"><a class="text-link" id="planner-link" href="#/projects/workspace-layout?seats=${qty}">Открыть планировщик</a></p></section>
       <form class="panel" id="request-form" data-kind="project" ${target?'data-product="'+target.id+'"':''}><h2 id="project-form" tabindex="-1">Запросить смету</h2>
       ${transportNote()}
       ${target?'<p class="small">'+e(target.name)+'</p>':''}
-      <label class="field-label" for="request-kit">Что рассчитать</label><select class="field" id="request-kit" name="kit"><option value="">Подбор по моему плану</option><option value="riva" ${target?'':'selected'} ${series().length===officeConfig.workspaceKit?.products.length?'':'disabled'}>Комплект Riva</option></select>
+      <label class="field-label" for="request-kit">Что рассчитать</label><select class="field" id="request-kit" name="kit"><option value="">Подбор по моему плану</option><option value="riva" ${target?'':'selected'} ${kitEstimate(qty,city).ready?'':'disabled'}>Комплект Riva</option></select>
       <p class="small" id="quote-kit" aria-live="polite"></p>
       <label><span class="field-label">Город</span><input class="field" name="city" maxlength="80" value="${e(city)}" required></label>
       <label><span class="field-label">Адрес и условия подъёма</span><input class="field" name="address" maxlength="250" autocomplete="street-address" placeholder="Улица, этаж, есть ли грузовой лифт"></label>
@@ -303,8 +373,8 @@ function updateEstimate() {
   const qty = Number(document.querySelector('#set-count').value);
   const quote = kitEstimate(qty,form.elements.city.value);
   const priceLabel = (amount, from = false) => amount == null ? 'По запросу' : (from ? 'от ' : '') + format(amount);
-  target.innerHTML = quote.products.map(item=>`<div><a class="text-link" href="#/product/${item.id}">${e(item.name)}</a><span>${qty} шт.</span></div>`).join('') +
-    `<div><span>За одно место</span><strong>${priceLabel(quote.perSeat,quote.from)}</strong></div>
+  target.innerHTML = quote.products.map(({product,qty})=>`<div class="priced-item"><span><a class="text-link" href="#/product/${product.id}">${e(product.name.replace(dimensionPattern,'').trim())}</a><small>${qty} шт. × ${priceLabel(product.price,product.max>product.price)}</small></span><strong>${priceLabel(product.price==null?null:product.price*qty,product.max>product.price)}</strong></div>`).join('') +
+    `
     <div><span>Стоимость мебели</span><strong>${priceLabel(quote.value,quote.from)}</strong></div>
     <div><span>Доставка</span><strong>${priceLabel(quote.delivery,true)}</strong></div>
     <div><span>Сборка${quote.assembly==null?'':` (${quote.rates.assemblyPercent}%)`}</span><strong>${priceLabel(quote.assembly,quote.from)}</strong></div>
@@ -317,6 +387,7 @@ function updateEstimate() {
   check.hidden = !quote.ready;
   check.textContent = 'Проверить наличие на ' + seatsLabel(qty);
   document.querySelector('[data-save-spec]').disabled = !quote.ready;
+  document.querySelector('#planner-link').href = '#/projects/workspace-layout?seats=' + qty;
   document.querySelector('#quote-kit').textContent = form.elements.kit.value === officeConfig.workspaceKit?.id
     ? 'Комплект Riva: ' + seatsLabel(qty) + '. Проверим наличие всей партии.'
     : '';
@@ -329,37 +400,131 @@ function syncQuoteCount(qty) {
   }
   if (!Array.from(select.options).some(option=>Number(option.value)===qty)) select.add(new Option(seatsLabel(qty),qty));
   select.value = String(qty);
+  syncKitRows(qty);
   updateEstimate();
 }
 
-function workspaceLayout() {
-  const products = series();
-  const desk = products[0];
-  return page('Пример расстановки на 8 мест',`<p class="intro">Два ряда по четыре стола. Сверьте расположение дверей, розеток и проходов с планом помещения.</p>
-    <section class="panel layout-panel" aria-label="Схема двух рядов по четыре рабочих места">
-      <div class="workspace-plan" aria-hidden="true">${[1,2,3,4,5,6,7,8].map(number=>`<span>${number}</span>`).join('')}</div>
-      ${desk ? '<p class="small">Стол Riva: '+e(dimensionsLabel(desk.dimensions) || 'см. карточку товара')+'. Границы проходов и места для кресел определяются по плану помещения.</p>' : ''}
-      <div class="actions"><a class="btn" href="#/project?seats=8">Рассчитать 8 мест</a></div>
-    </section>`,[['Проекты','#/projects']]);
+function workspaceLayout(qty) {
+  const desk = kitSelection(qty).find(item=>item.group.id==='desk');
+  return page('Планировщик рабочих мест',`<p class="intro">Выберите столы, число мест и схему. Введите размеры комнаты, чтобы сравнить её с габаритами расстановки.</p>
+    <div class="planner-grid">
+      <section class="panel planner-controls" id="plan-controls"><h2>Помещение</h2>
+      <div class="form-two"><label><span class="field-label">Ширина, м</span><input class="field" type="number" min="2" max="60" step="0.1" name="width" value="${roomPlan.width}"></label>
+      <label><span class="field-label">Глубина, м</span><input class="field" type="number" min="2" max="60" step="0.1" name="depth" value="${roomPlan.depth}"></label></div>
+      <label><span class="field-label">Места</span><input class="field" type="number" min="1" max="40" name="seats" value="${Math.min(qty,40)}"></label>
+      <label><span class="field-label">Модель стола</span><select class="field" name="desk">${desk?.group.models.map(id=>productById.get(id)).filter(Boolean).map(item=>`<option value="${item.id}" ${desk.id===item.id?'selected':''}>Riva · ${e(dimensionsLabel(item.dimensions))}</option>`).join('') || ''}</select></label>
+      <label><span class="field-label">Расстановка</span><select class="field" name="layout">${workspace.layouts.map(([key,label])=>`<option value="${key}" ${roomPlan.layout===key?'selected':''}>${label}</option>`).join('')}</select></label>
+      <label><span class="field-label">Расстояние между рядами или группами, м</span><input class="field" type="number" min="0.5" max="4" step="0.1" name="gap" value="${roomPlan.gap}"></label>
+      <a class="btn" id="plan-to-kit" href="#/project?section=kit&seats=${qty}">Применить к комплекту</a></section>
+      <section class="panel plan-visual"><h2>Расстановка столов</h2><div id="room-preview"></div><p id="room-status" class="plan-status" aria-live="polite"></p>
+      <p class="small">На схеме предусмотрено по 0,7 м на зону кресла. Двери, колонны, тумбы и проходы вдоль стен уточняются по плану.</p></section>
+    </div>`,[['Комплектация','#/project']]);
+}
+
+function updateRoomPreview(save = false) {
+  const controls = document.querySelector('#plan-controls');
+  if (!controls) return;
+  const read = name=>controls.querySelector('[name="'+name+'"]').value;
+  const count = Number(read('seats'));
+  const desk = productById.get(Number(read('desk')));
+  const room = workspace.planSettings(Object.fromEntries(['width','depth','gap','layout'].map(key=>[key,read(key)])));
+  const valid = [...controls.querySelectorAll('input')].every(input=>input.value && input.checkValidity());
+  const layout = valid ? workspace.arrange(count,desk?.dimensions,room) : null;
+  const target = document.querySelector('#room-preview');
+  const status = document.querySelector('#room-status');
+  const apply = document.querySelector('#plan-to-kit');
+  apply.dataset.planSeats = layout ? String(count) : '';
+  apply.dataset.planDesk = desk?.id || '';
+  apply.setAttribute('aria-disabled',String(!layout));
+  if (save) { roomPlan=room; site.save('room-plan',roomPlan); }
+  if (!layout) {
+    target.innerHTML='';
+    status.textContent='Проверьте размеры комнаты, расстояние и количество мест от 1 до 40.';
+    return;
+  }
+  apply.href='#/project?section=kit&seats='+count;
+  const inside = layout.width <= room.width+.00001 && layout.depth <= room.depth+.00001;
+  const w = Math.max(room.width,layout.width);
+  const h = Math.max(room.depth,layout.depth);
+  const pct = (value,total)=>(value/total*100).toFixed(3)+'%';
+  const rect = (x,y,width,depth)=>'left:'+pct(x,w)+';top:'+pct(y,h)+';width:'+pct(width,w)+';height:'+pct(depth,h);
+  const shape = layout.tables.map(({x,y,width,depth,chairTop,chair,number})=>`<i class="diagram-desk" style="${rect(x,y,width,depth)}">${number}</i><i class="diagram-chair" style="${rect(x+width*.28,chairTop+.08,width*.44,chair-.16)}"></i>`).join('');
+  target.innerHTML=`<div class="room-diagram" style="aspect-ratio:${w}/${h};max-width:${Math.min(100,w/h*65)}%" aria-hidden="true"><div class="diagram-walls" style="${rect(0,0,room.width,room.depth)}"></div>${shape}</div>`;
+  status.textContent=(inside?'Помещается по габаритам. ':'Выходит за границы комнаты. ')+'Расстановка занимает '+new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(layout.width)+' × '+new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2}).format(layout.depth)+' м.';
+  status.classList.toggle('does-not-fit',!inside);
+}
+
+function deliveryPage() {
+  return page('Доставка и сборка',`
+    <p class="intro">Доставляем мебель по Перми и Пермскому краю. Поставки в другие города рассчитываем по адресу, объёму и сроку заказа.</p>
+    ${serviceFacts()}
+    <section class="section service-details"><div><h2>Ориентиры по срокам</h2><dl class="delivery-timing">${site.delivery.map(([label,time])=>`<div><dt>${e(label)}</dt><dd>${e(time)}</dd></div>`).join('')}</dl><p class="small">Интервалы зависят от наличия и объёма заказа. Даты доставки и монтажа согласуем при оформлении.</p></div>
+    <aside class="panel delivery-checklist"><h2>Что нужно для точного расчёта</h2><ul><li>Адрес, этаж и наличие грузового лифта.</li><li>Количество изделий и размеры самых крупных деталей.</li><li>Доступ для разгрузки и желаемая дата готовности.</li></ul><p>Для офиса приложите план или список мебели.</p><a class="btn" href="#/project">Запросить расчёт</a></aside></section>
+    <section class="section"><div class="section-head"><h2>Сборка на объекте</h2></div><div class="steps service-steps">
+      <div><h3>Согласуем дату</h3><p>По стандартным условиям сборка проводится в рабочее время. Сборку в день доставки согласуем по заказу.</p></div>
+      <div><h3>Проверим доступ</h3><p>Подъём, установка навесных элементов и нестандартные условия согласуются и оплачиваются отдельно.</p></div>
+      <div><h3>Уточним объём</h3><p>Демонтаж и утилизация старой мебели в стандартную сборку не входят. Опишите эти работы при запросе.</p></div></div></section>
+    <section class="section"><h2>Вопросы по доставке</h2><div class="faq">
+      <details><summary>Можно привезти мебель к дате переезда?</summary><p>Укажите, когда офис должен быть готов. Менеджер проверит наличие партии, отдельно согласует дату доставки и завершения сборки.</p></details>
+      <details><summary>Можно заказать поставку в другой город?</summary><p>Да. Для расчёта укажите город, адрес и состав заказа. Тарифы для Перми приведены отдельно.</p></details>
+      <details><summary>Что делать, если при доставке не хватает детали?</summary><p>Зафиксируйте недостачу или повреждение, подготовьте фото и сообщите номер заказа менеджеру.</p></details>
+    </div><a class="text-link" href="#/service">Оплата, документы и сервис</a></section>`);
+}
+
+function servicePage() {
+  return page('Услуги и сервис',`<p class="intro">Помогаем с комплектацией, документами по заказу и вопросами после поставки.</p>
+    <div class="steps service-steps">
+      <div><h3>Подбор и дизайн-проект</h3><p>Пришлите план и число сотрудников. Подберём рабочие места, переговорные, хранение и мебель для зоны приёма.</p><a class="text-link" href="#/project">Рассчитать комплектацию</a></div>
+      <div><h3>Доставка, подъём и монтаж</h3><p>Оценим объём, адрес, подъём на этаж и условия сборки. Для проекта согласуем график работ.</p><a class="text-link" href="#/delivery">Тарифы и сроки</a></div>
+      <div><h3>Оплата и документы</h3><p>Для организаций подготовим коммерческое предложение и счёт. Условия оплаты и комплект документов согласуйте с менеджером.</p><a class="text-link" href="#/contacts">Контакты</a></div></div>
+    <section class="section service-details"><div><h2>Гарантия и обращение по заказу</h2><p>Условия гарантии зависят от изделия. При повреждении или некомплекте укажите номер заказа и артикул, опишите проблему и приложите фотографии. Если мебель уже собрана, сообщите об этом менеджеру.</p></div>
+    <aside class="panel"><h3>Связаться с сервисом</h3><p class="small">Подготовьте номер заказа, чтобы мы быстрее нашли поставку.</p><a class="text-link" href="mailto:${site.email}">${site.email}</a><br><a class="text-link" href="tel:+73422155898">${site.phone}</a></aside></section>`);
+}
+
+function contactsPage(showroom) {
+  const contacts = officeConfig.contacts;
+  const address = contacts?.address || 'Пермь, ул. Екатерининская, 10';
+  const mapId = contacts?.mapId || '220992897587';
+  const mapLink = 'https://yandex.ru/maps/org/grand_ofis/'+mapId+'/';
+  const mapParams = new URLSearchParams({oid:mapId,ol:'biz',z:'16'});
+  if (contacts?.coordinates) mapParams.set('ll',contacts.coordinates.join(','));
+  const mapFrame = 'https://yandex.ru/map-widget/v1/?'+mapParams;
+  return page(showroom?'Шоурум':'Контакты',`<p class="intro">${showroom?'Перед визитом уточните часы работы и наличие модели, которую хотите посмотреть.':'Свяжитесь с нами, чтобы подобрать мебель, рассчитать поставку или уточнить условия по заказу.'}</p>
+    <section class="contacts-grid"><div class="panel"><h2>Офис в Перми</h2><dl class="contact-details">
+    <div><dt>Адрес</dt><dd>${e(address)}</dd></div><div><dt>Телефон</dt><dd><a class="text-link" href="tel:+73422155898">${site.phone}</a></dd></div><div><dt>Почта</dt><dd><a class="text-link" href="mailto:${site.email}">${site.email}</a></dd></div>
+    ${contacts?.stop?'<div><dt>Ближайшая остановка</dt><dd>'+e(contacts.stop)+'</dd></div>':''}</dl>
+    <div class="actions"><a class="btn" href="tel:+73422155898">Позвонить</a><a class="btn secondary" href="${mapLink}">Маршрут и график</a></div></div>
+    <div class="contact-map"><iframe title="Яндекс Карта — Гранд-Офис на Екатерининской, 10" src="${e(mapFrame)}" loading="lazy" allowfullscreen></iframe></div></section>
+    <section class="section"><div class="section-head"><h2>Как найти офис</h2></div><div class="contacts-grid entrance-grid">${photo('./assets/company.webp','Вход и вывеска Гранд-Офис на Екатерининской улице','loading="lazy" width="1158" height="850"')}
+      <div class="panel"><h3>Перед визитом</h3><p>Ориентир — вывеска «Гранд-Офис» на фасаде. Позвоните заранее, если хотите посмотреть конкретное кресло, стол или образец отделки.</p><h3>Для расчёта офиса</h3><p>Пришлите план, число рабочих мест и дату переезда. Для доставки сообщите адрес, этаж и наличие грузового лифта.</p><a class="text-link" href="#/project">Запросить смету</a></div></div></section>`);
+}
+
+function aboutPage() {
+  return page('О компании',`<p class="intro">«Гранд-Офис» поставляет офисную мебель в Перми и Пермском крае. Помогаем с отдельной покупкой и оснащением офиса под ключ.</p>
+    <section class="project-feature about-feature">${photo('./assets/company.webp','Офис компании Гранд-Офис в Перми','loading="lazy" width="1158" height="850"')}
+      <div><h2>От планировки до монтажа</h2><p>Подбираем мебель для рабочих мест, кабинетов, переговорных и клиентских зон. Согласуем расстановку, комплектацию и график поставки.</p><div class="actions"><a class="btn" href="#/project">Обсудить проект</a><a class="text-link" href="#/contacts">Как нас найти</a></div></div></section>
+    <section class="section"><div class="section-head"><h2>Как работаем</h2></div><div class="steps service-steps">
+      <div><h3>Комплектация по задаче</h3><p>Начинаем с плана, числа сотрудников и бюджета. Подбираем мебель по размерам, отделке и назначению зоны.</p></div>
+      <div><h3>Производители и склад</h3><p>Работаем с мебельными фабриками и собственным складом в Перми. Наличие и сроки подтверждаем по конкретным моделям.</p></div>
+      <div><h3>Поставка и сопровождение</h3><p>Согласуем состав заказа и документы, доставим и соберём мебель на объекте. Поможем с вопросами по гарантийному обслуживанию.</p></div></div></section>
+    <section class="section"><div class="section-head"><h2>Проекты компании</h2><a class="text-link" href="#/projects">Смотреть портфолио</a></div>${projectShowcase()}</section>`);
+}
+
+function projectsPage(id) {
+  const item = site.projects.find(project=>project.id===id);
+  if (item) return page(item.name,`<div class="case-highlight case-detail"><figure class="case-cover">${photo('./assets/'+item.image,item.zone,'width="656" height="505"')}</figure><div class="case-summary"><h2>${e(item.zone)}</h2><p>${e(item.description)}</p><a class="btn" href="#/project">Рассчитать похожий офис</a></div></div>
+      <section class="spec"><h2>Мебель в кадре</h2><dl>${item.items.map(([zone,furniture])=>`<div><dt>${e(zone)}</dt><dd>${e(furniture)}</dd></div>`).join('')}</dl></section>
+      <section class="section"><div class="section-head"><h2>Другие проекты</h2></div>${projectShowcase()}</section>`,[['Проекты','#/projects']]);
+  return page('Выполненные проекты',`<p class="intro">Посмотрите клиентские залы, открытые офисы и рабочие зоны из портфолио. Для своего помещения можно собрать мебель и проверить расстановку по размерам комнаты.</p><div class="section">${projectShowcase()}</div>
+    <section class="project-feature kit-hero">${photo('./assets/riva-interior.webp','Рабочая мебель Riva в офисе','loading="lazy"')}<div><h2>Расстановка для вашего офиса</h2><p>Выберите мебель и сравните один ряд, два ряда и группы столов. Параметры можно перенести в расчёт комплекта.</p><a class="btn" href="#/projects/workspace-layout">Открыть планировщик</a></div></section>`);
 }
 
 function infoPage(key,id) {
-  const rates = officeConfig.localRates;
-  if (key === 'delivery') return page('Доставка и сборка',`<p class="intro">В Перми и Пермском крае доставляем и собираем мебель на объекте. Поставки в другие города рассчитываются отдельно.</p><div class="panel info-panel"><h2>Ориентиры по Перми</h2><dl>${site.delivery.map(([label,time])=>'<div><dt>'+e(label)+'</dt><dd>'+e(time)+'</dd></div>').join('')}</dl><p>${rates?`Доставка от ${format(rates.deliveryFrom)}, подъём от ${format(rates.liftFromPerFloor)} за этаж, сборка — ${rates.assemblyPercent}% от стоимости мебели по стандартным условиям. `:''}Тариф и срок подтверждаем по адресу, габаритам и наличию заказа.</p><div class="actions"><a class="btn" href="#/project">Рассчитать поставку</a><a class="btn secondary" href="#/service">Оплата и сервис</a></div></div>`);
-  if (key === 'service') return page('Услуги и сервис',`<div class="section steps"><div><h3>Оплата и документы</h3><p>Менеджер уточнит состав, доставку и способ оплаты. Для организаций можно запросить счёт и документы по заказу.</p></div><div><h3>Сборка</h3><p>Сборку и подъём согласуем по адресу и составу. Дату монтажа фиксируем при подтверждении поставки.</p></div><div><h3>Гарантия и рекламации</h3><p>Условия гарантии зависят от изделия. Если есть повреждение или не хватает детали, сообщите номер заказа, артикул и приложите фото.</p></div></div><a class="btn" href="#/contacts">Связаться с нами</a>`);
-  if (key === 'about') return page('О компании',`<section class="project-feature section">${photo('./assets/office.webp','Офисная мебель «Гранд-Офис»')}<div><h2>От планировки до сборки</h2><p>«Гранд-Офис» комплектует рабочие пространства, кабинеты, зоны приёма и переговорные. Помогаем выбрать мебель, согласовать поставку и организовать сборку.</p><a class="btn" href="#/projects">Посмотреть проекты</a></div></section>`);
-  if (key === 'contacts' || key === 'showroom') {
-    const title = key==='showroom'?'Шоурум':'Контакты';
-    return page(title,`<p class="intro">${key==='showroom'?'Уточните время визита и наличие модели для примерки по телефону.':'Подбор мебели, расчёт поставки и вопросы по заказу.'}</p>
-      <section class="panel info-panel"><dl><div><dt>Адрес офиса</dt><dd>Пермь, ул. Екатерининская, 10</dd></div><div><dt>Телефон</dt><dd><a class="text-link" href="tel:+73422155898">${site.phone}</a></dd></div><div><dt>Электронная почта</dt><dd><a class="text-link" href="mailto:${site.email}">${site.email}</a></dd></div></dl><div class="actions"><a class="btn" href="tel:+73422155898">Позвонить</a><a class="btn secondary" href="https://yandex.ru/maps/?text=${encodeURIComponent('Пермь, Екатерининская улица, 10')}">Открыть на карте</a></div></section>`);
-  }
-  if (key==='projects') {
-    if (id==='workspace-layout') return workspaceLayout();
-    if (id==='sber') return page('Сбер',`<div class="case-highlight case-detail"><figure class="case-cover">${photo('./assets/sber-port.jpg','Клиентский зал Сбера')}</figure><div class="case-summary"><h2>Клиентский зал</h2><p>Круглые столы с деревянными стульями, высокие столы с барными стульями и мягкие места вдоль стены.</p><a class="btn" href="#/project">Рассчитать похожий офис</a></div></div><section class="spec"><h2>Мебель в кадре</h2><dl><div><dt>Основная посадка</dt><dd>Круглые столы и стулья</dd></div><div><dt>Высокая посадка</dt><dd>Высокие столы и барные стулья</dd></div><div><dt>Мягкая зона</dt><dd>Пуфы вдоль стены</dd></div></dl></section>`,[['Проекты','#/projects']]);
-    const project = site.projects.find(p=>p.id===id);
-    if (project) return page(project.name,`<section class="project-feature section">${photo('./assets/'+project.image,project.name)}<div><h2>Офисная комплектация</h2><p>Для похожего пространства подберём мебель по планировке и числу рабочих мест.</p><a class="btn" href="#/project">Рассчитать комплектацию</a></div></section>`,[['Проекты','#/projects']]);
-    return page('Выполненные проекты',`<div class="section">${projectShowcase()}</div><section class="service-strip"><div><h2>Расстановка на 8 мест</h2><p>Пример с двумя рядами рабочих столов Riva.</p></div><a class="btn secondary" href="#/projects/workspace-layout">Посмотреть схему</a></section>`);
-  }
+  if (key==='delivery') return deliveryPage();
+  if (key==='service') return servicePage();
+  if (key==='about') return aboutPage();
+  if (key==='contacts' || key==='showroom') return contactsPage(key==='showroom');
+  if (key==='projects') return projectsPage(id);
   return page('Страница не найдена','<p class="intro"><a class="text-link" href="#/">Вернуться на главную</a></p>');
 }
 
@@ -389,7 +554,7 @@ async function loadProjectItems(product) {
     const entries = await site.getFeatured();
     for (const row of entries) if (!productById.has(row[0])) productById.set(row[0],fromProduct(row));
   }
-  const ids = [...new Set([...(officeConfig.workspaceKit?.products || []),product].filter(Boolean))];
+  const ids = [...new Set([...kitGroups().flatMap(group=>group.models),product].filter(Boolean))];
   await Promise.all(ids.filter(id=>!productById.has(id)).map(loadDetail));
 }
 
@@ -413,21 +578,29 @@ async function render(move = false) {
     details = await loadDetail(product);
     const selected = site.session('selected-'+product,null);
     if (details?.[2]?.some(item=>item[0]===selected)) variant = await site.variation(product,selected);
-  } else if (key==='delivery') await loadConfig;
+  } else await loadConfig;
   if (current!==revision) return;
   if (!key || key==='main') main.innerHTML=home();
   else if (key==='catalog') {catalogOrigin=location.hash;main.innerHTML=catalogPage(args);}
   else if (key==='project') {
     main.innerHTML=projectPage(productById.get(target),validSeats(args.get('seats')) || 4);
     updateEstimate();
+  } else if (id==='workspace-layout') {
+    main.innerHTML=workspaceLayout(validSeats(args.get('seats')) || 8);
+    updateRoomPreview();
   } else if (key==='product' && productById.has(product)) main.innerHTML=itemPage(productById.get(product),details,variant);
   else if (key==='cart') main.innerHTML=cartPage();
   else if (key==='checkout') main.innerHTML=checkoutPage();
   else main.innerHTML=infoPage(key,id);
-  if (move) {
+  if (key==='project' && args.get('section')==='kit') {
+    const kit=document.querySelector('#kit-builder');
+    kit?.focus({preventScroll:true});
+    kit?.scrollIntoView({block:'start'});
+  } else if (move) {
     main.focus({preventScroll:true});
     window.scrollTo(0,positions.get(location.hash) || 0);
   }
+  main.querySelectorAll('.project-track').forEach(syncCarousel);
   const heading = main.querySelector('h1')?.textContent;
   document.title = heading ? heading + ' — Гранд-Офис' : 'Гранд-Офис';
 }
@@ -441,9 +614,12 @@ function kitSummary(qty, destination) {
     ...(quote.assembly==null ? [] : ['Сборка: ' + (quote.from?'от ':'') + format(quote.assembly)]),
     ...(quote.total==null ? [] : ['Ориентир без подъёма: от ' + format(quote.total)]),
   ];
+  const plan = kitPreferences.plan;
+  const layout = plan && workspace.layouts.find(([key])=>key===plan.layout);
   return ['Комплект Riva на ' + seatsLabel(qty),
-    ...quote.products.map(p=>[p.name,p.sku ? 'арт. '+p.sku:'',qty+' шт.'].filter(Boolean).join(' · ')),
-    ...pricing];
+    ...quote.products.map(({product,qty})=>[product.name,product.sku ? 'арт. '+product.sku:'',qty+' шт.',money(product.price,product.max)].filter(Boolean).join(' · ')),
+    ...pricing,
+    ...(layout ? ['Помещение: '+plan.width+' × '+plan.depth+' м. '+layout[1]+', расстояние '+plan.gap+' м.'] : [])];
 }
 
 function downloadSpec() {
@@ -456,10 +632,33 @@ function downloadSpec() {
   setTimeout(()=>URL.revokeObjectURL(url),2000);
 }
 
+function syncCarousel(track) {
+  const carousel=track.closest('.project-carousel');
+  carousel.querySelector('[data-projects="-1"]').disabled=track.scrollLeft<2;
+  carousel.querySelector('[data-projects="1"]').disabled=track.clientWidth+track.scrollLeft>=track.scrollWidth-2;
+}
+main.addEventListener('scroll',event=>{
+  if (event.target.classList?.contains('project-track')) syncCarousel(event.target);
+},true);
+window.addEventListener('resize',()=>main.querySelectorAll('.project-track').forEach(syncCarousel));
+
 main.addEventListener('click', async (event)=>{
+  const apply = event.target.closest('#plan-to-kit');
+  if (apply) {
+    if (!apply.dataset.planSeats || !apply.dataset.planDesk) {event.preventDefault();return;}
+    updateRoomPreview(true);
+    kitPreferences.desk = {id:Number(apply.dataset.planDesk),qty:Number(apply.dataset.planSeats)};
+    kitPreferences.plan = {...roomPlan};
+    site.save('kit-preferences',kitPreferences);
+  }
   const control=event.target.closest('button');
   if (!control) return;
   const {photo, add, remove, scroll} = control.dataset;
+  if (control.dataset.projects) {
+    const track = control.closest('.project-carousel').querySelector('.project-track');
+    const step = track.firstElementChild.getBoundingClientRect().width + (parseFloat(getComputedStyle(track).columnGap) || 0);
+    track.scrollBy({left:step*Number(control.dataset.projects),behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+  }
   if (photo) {
     main.querySelector('.gallery img').src=photo;
     const caption = main.querySelector('.photo-caption');
@@ -507,9 +706,12 @@ main.addEventListener('change',event=>{
     const form = document.querySelector('#request-form');
     form.elements.seats.value=element.value;
     if (!form.dataset.product) form.elements.kit.value = officeConfig.workspaceKit?.id || '';
+    syncKitRows(Number(element.value));
     updateEstimate();
   }
   if (element.name==='kit') updateEstimate();
+  if (element.dataset.kitModel || element.dataset.kitQty) updateKitChoice(element);
+  if (element.closest('#plan-controls')) updateRoomPreview(true);
   if (element.id==='product-option') {
     const choice=Number(element.value);
     site.save('selected-'+element.dataset.id,choice);
@@ -530,6 +732,7 @@ main.addEventListener('change',event=>{
 
 main.addEventListener('input',event=>{
   const input=event.target;
+  if (input.closest('#plan-controls')) updateRoomPreview();
   if (input.form?.dataset.kind!=='project') return;
   if (input.name==='city') updateEstimate();
   if (input.name==='seats' && validSeats(input.value)) syncQuoteCount(validSeats(input.value));
@@ -583,6 +786,10 @@ main.addEventListener('submit',async(event)=>{
   form.dataset.token ||= crypto.randomUUID();
   try {
     data.file=await toEncoded(data.file);
+    if (kind==='project' && data.kit) {
+      data.kitLines=kitEstimate(Number(data.seats),data.city).products.map(({group,product,qty})=>({group:group.id,id:product.id,qty}));
+      data.roomPlan=kitPreferences.plan;
+    }
     const receipt=await site.post('requests',{kind,token:form.dataset.token,...data,lines:kind==='order'?cart.map(({id,choice,qty})=>({id,choice,qty})):[]});
     status.textContent=(kind==='order'?'Заказ № ':'Заявка № ')+receipt.id+' принята. Менеджер свяжется с вами для подтверждения.';
     if (kind==='order') {cart=[];saveCart();}

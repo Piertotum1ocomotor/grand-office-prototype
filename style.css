@@ -276,3 +276,99 @@ dialog h2{font-size:27px;margin-bottom:15px}
  .project-feature .kit-photo{min-height:170px}
  .project-feature .kit-photo img{height:150px}
 }
+
+main:focus{outline:none}
+.catalog-shell{display:grid;grid-template-columns:minmax(0,1fr) minmax(238px,25%);gap:24px;margin-top:19px;align-items:start}
+.catalog-results{grid-column:1;grid-row:1;min-width:0}
+.catalog-results .catalog-tools{margin-top:0}
+.catalog-sidebar{grid-column:2;grid-row:1;position:sticky;top:14px;min-width:0}
+.catalog-directory{border:1px solid var(--line);border-radius:12px;background:var(--paper);padding:13px 15px}
+.catalog-directory>summary{cursor:pointer;font-size:18px}
+.catalog-directory nav{max-height:min(69vh,620px);overflow:auto;margin-top:10px;padding-right:7px}
+.catalog-directory nav>a,.catalog-directory nav>details{display:block;border-top:1px solid var(--line)}
+.catalog-directory nav summary,.catalog-directory nav a{padding:8px 4px;color:var(--ink);cursor:pointer}
+.catalog-directory nav a{display:block}
+.catalog-directory nav details div{padding:0 0 4px 12px}
+.catalog-directory nav a[aria-current]{color:var(--brand-dark);background:#f4eae5;border-radius:5px}
+.catalog-directory nav a:hover{color:var(--brand-dark)}
+.catalog-shell .catalog-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.catalog-shell .filters-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.kit-hero img{max-height:370px;min-height:270px;object-position:50% 57%}
+.kit-hero .actions{align-items:center;gap:13px}
+.home-delivery{margin-bottom:58px}
+.service-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0 0}
+.service-facts>div{display:block;border:1px solid var(--line);background:var(--paper);padding:16px;border-radius:10px}
+.service-facts dd{margin-top:7px;color:var(--brand-dark);font-size:clamp(19px,2.8vw,29px)}
+.service-facts dd.fact-description{font-size:14px;color:var(--muted);margin-top:7px}
+.project-carousel{min-width:0}
+.project-track{display:grid;grid-auto-flow:column;grid-auto-columns:clamp(245px,31%,372px);gap:14px;list-style:none;padding:0 0 9px;margin:0;overflow:auto;scroll-snap-type:x mandatory;scrollbar-color:#c5aca2 #f1eeed}
+.project-track li{scroll-snap-align:start;min-width:0}
+.project-tile{display:block;height:100%;overflow:hidden;border-radius:10px;border:1px solid var(--line);background:var(--paper)}
+.project-tile img{width:100%;height:auto;aspect-ratio:16/9;object-fit:cover}
+.project-tile div{padding:11px 14px}
+.project-tile h3{font-size:19px}
+.project-tile p{margin-top:4px;color:var(--muted);font-size:14px}
+.carousel-buttons{margin-top:10px}
+.carousel-buttons .btn{min-height:38px}
+.case-highlight{grid-template-columns:minmax(0,540px) minmax(0,1fr);max-width:1000px}
+.case-detail .case-cover img{height:auto;min-height:0;max-height:390px;object-fit:cover}
+.contacts-grid,.service-details{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.35fr);gap:18px;align-items:start}
+.contacts-grid .panel h2{margin-bottom:10px}
+.contact-details div{display:block}
+.contact-details dd{margin-top:4px;overflow-wrap:anywhere}
+.contacts-grid .actions{margin-top:12px}
+.contact-map{overflow:hidden;border-radius:12px;background:var(--soft);height:clamp(310px,38vw,460px)}
+.contact-map iframe{display:block;border:0;width:100%;height:100%}
+.entrance-grid img{border-radius:10px;width:100%;max-height:335px;object-fit:cover}
+.entrance-grid h3:not(:first-child){margin-top:19px}
+.entrance-grid p{margin:7px 0 12px;color:var(--muted)}
+.about-feature img{max-height:430px;min-height:280px}
+.service-details{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)}
+.delivery-timing{margin-top:15px}
+.delivery-timing dt{color:var(--ink)}
+.delivery-timing dd{justify-self:end;text-align:right}
+.delivery-timing+.small,.service-details h2+p{margin-top:13px}
+.delivery-checklist ul{padding-left:19px}
+.delivery-checklist li+li{margin-top:6px}
+.delivery-checklist p{margin-top:10px}
+.service-steps .text-link{display:inline-block;margin-top:9px}
+.faq{margin:13px 0}
+.faq details{padding:11px 0;border-top:1px solid var(--line)}
+.faq summary{cursor:pointer}
+.faq p{margin:8px 0;color:var(--muted)}
+#kit-builder{scroll-margin-top:18px}
+.kit-choices{display:grid;gap:4px;margin:10px 0 0}
+.kit-row{display:grid;grid-template-columns:minmax(0,1fr) 100px;gap:9px}
+.kit-row label{min-width:0}
+.kit-row .field{margin-bottom:7px}
+.priced-item span{min-width:0}
+.priced-item small{display:block;color:var(--muted);margin-top:3px}
+.planner-grid{display:grid;grid-template-columns:minmax(235px,.68fr) minmax(0,1.4fr);gap:17px;align-items:start}
+.room-diagram{position:relative;margin:14px auto 10px;background:#f3efec;border-radius:5px}
+.room-diagram i{position:absolute;box-sizing:border-box}
+.diagram-walls{position:absolute;border:2px solid #625b57;background:#fff;box-sizing:border-box}
+.diagram-desk{display:grid;place-items:center;background:#e9cabb;border:1px solid #a86d5b;color:var(--brand-dark);font-size:clamp(8px,1.15vw,13px);font-style:normal;line-height:1;overflow:hidden}
+.diagram-chair{background:#dddbd7;border:1px solid #8d827d;border-radius:45%}
+.plan-status{margin-top:9px;color:var(--green)}
+.plan-status.does-not-fit{color:var(--brand-dark)}
+.plan-visual .small{margin-bottom:0}
+#plan-to-kit[aria-disabled=true]{opacity:.5;cursor:default}
+@media(max-width:960px){
+ .catalog-shell{display:flex;flex-direction:column;gap:12px}
+ .catalog-sidebar,.catalog-results{position:static;width:100%;max-width:100%}
+ .catalog-directory nav{max-height:45vh}
+}
+@media(max-width:720px){
+ .catalog-shell .catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .service-facts,.contacts-grid,.service-details,.planner-grid,.case-highlight{grid-template-columns:1fr}
+ .service-facts{gap:8px}
+ .service-facts>div{padding:13px}
+ .project-track{grid-auto-columns:clamp(215px,78%,310px);gap:10px}
+ .carousel-buttons .btn{min-height:37px}
+ .contact-map{height:320px}
+ .kit-hero img,.about-feature img{min-height:0;max-height:244px}
+ .home-delivery{margin-bottom:34px}
+ .service-steps{grid-template-columns:1fr}
+ .kit-row{grid-template-columns:minmax(0,1fr) 78px}
+ .kit-row .field{padding-inline:7px}
+}
