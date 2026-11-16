@@ -306,11 +306,21 @@ function kitEstimate(qty, destination) {
   return {products,ready,qty,value,assembly,delivery,total,local,rates,from:products.some(({product})=>product.max>product.price)};
 }
 
+function kitOptionLabel(group,item) {
+  const model = item.name.split(/\s+/)[0];
+  if (group==='desk') return 'Riva ' + model + (item.dimensions?.[0] && item.dimensions?.[1] ? ' · '+item.dimensions.slice(0,2).join(' × ')+' мм' : '');
+  if (group==='storage') {
+    const drawers = item.name.match(/\d+\s+ящик[^\s]*/i)?.[0];
+    return 'Riva ' + model + (drawers ? ' · '+drawers : '');
+  }
+  return item.name.replace(/^(офисное кресло эконом|кресло)\s+/i,'');
+}
+
 function kitRows(qty) {
   return kitSelection(qty).map(({group,id,qty:units})=>{
     const options = group.models.map(id=>productById.get(id)).filter(Boolean);
     return `<div class="kit-row"><label><span class="field-label">${e(group.label)}</span><select class="field" data-kit-model="${group.id}">
-      ${group.optional?'<option value="0">Не добавлять</option>':''}${options.map(item=>`<option value="${item.id}" ${id===item.id?'selected':''}>${e(item.name.replace(dimensionPattern,'').trim())} · ${e(dimensionsLabel(item.dimensions) || 'размер уточняется')} · ${money(item.price,item.max)}</option>`).join('')}</select></label>
+      ${group.optional?'<option value="0">Не добавлять</option>':''}${options.map(item=>`<option value="${item.id}" ${id===item.id?'selected':''}>${e(kitOptionLabel(group.id,item))} · ${money(item.price,item.max)}</option>`).join('')}</select></label>
       <label><span class="field-label">Количество</span><input class="field" type="number" min="1" max="5000" value="${units}" data-kit-qty="${group.id}" aria-label="Количество — ${e(group.label)}" ${id?'':'disabled'}></label></div>`;
   }).join('');
 }

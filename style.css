@@ -337,6 +337,7 @@ main:focus{outline:none}
 .faq summary{cursor:pointer}
 .faq p{margin:8px 0;color:var(--muted)}
 #kit-builder{scroll-margin-top:18px}
+#kit-builder:focus{outline:none}
 .kit-choices{display:grid;gap:4px;margin:10px 0 0}
 .kit-row{display:grid;grid-template-columns:minmax(0,1fr) 100px;gap:9px}
 .kit-row label{min-width:0}
