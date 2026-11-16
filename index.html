@@ -4,36 +4,42 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
+  <meta name="description" content="Офисная мебель в Перми. Столы, кресла и комплектация офисов с доставкой и сборкой.">
   <meta name="theme-color" content="#fbfaf9">
   <title>Гранд-Офис — офисная мебель и комплектация офисов</title>
   <link rel="stylesheet" href="./style.css">
+  <script src="./store.js" defer></script>
   <script src="./app.js" defer></script>
 </head>
 <body>
   <a class="skip" href="#main">К содержанию</a>
-  <div class="demo-bar"><div class="shell"><span><i></i> Демо сайта</span><span>Цены и наличие для примера</span></div></div>
   <header class="site-header">
+    <div class="shell topbar">
+      <button class="city-button" id="city-button" type="button"><span aria-hidden="true">⌖</span> <span id="city-name">Пермь</span> <span aria-hidden="true">⌄</span></button>
+      <div class="top-links"><a href="#/about">О компании</a><a href="#/projects">Проекты</a><a href="#/delivery">Доставка и сборка</a><a href="#/contacts">Контакты</a></div>
+      <a class="phone" href="tel:+73422155898">+7 (342) 215-58-98</a>
+    </div>
     <div class="shell header">
-      <a class="logo" href="#/" aria-label="Гранд-Офис — главная"><img src="./assets/logo.svg" alt="Гранд-Офис" width="200" height="42"></a>
-      <nav class="nav" aria-label="Разделы">
-        <a href="#/catalog" data-nav="catalog">Каталог</a>
+      <a class="logo" href="#/" aria-label="Гранд-Офис — главная"><img src="./assets/logo.svg" alt="Гранд-Офис" width="244" height="43"></a>
+      <nav class="nav" aria-label="Основная навигация">
+        <a class="btn" href="#/catalog" data-nav="catalog">Каталог</a>
         <a href="#/project" data-nav="project">Комплектация офисов</a>
-        <a href="#/delivery" data-nav="delivery">Доставка и сборка</a>
       </nav>
-      <div class="header-right">
-        <span class="city"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 10c0 6-8 11-8 11S4 16 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></svg>Пермь</span>
-        <a class="bag" href="#/cart" aria-label="Корзина" title="Корзина"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16l1 13H3L4 8Z"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/></svg><span id="cart-count">0</span></a>
-      </div>
+      <form id="global-search" role="search"><label class="sr-only" for="search-input">Поиск по каталогу</label><input id="search-input" type="search" placeholder="Название или артикул" maxlength="120"><button type="submit" aria-label="Найти" title="Найти">⌕</button></form>
+      <a class="bag" href="#/cart" aria-label="Корзина"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16l1 13H3L4 8Z"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/></svg><span id="cart-count">0</span></a>
     </div>
   </header>
   <main id="main" tabindex="-1"></main>
   <footer class="footer">
     <div class="shell footer-inner">
-      <a class="logo" href="#/" aria-label="Гранд-Офис — главная"><img src="./assets/logo.svg" alt="Гранд-Офис" width="180" height="38"></a>
-      <span>Офисная мебель в Перми</span>
-      <a href="https://grand-office59.ru/">Действующий сайт ↗</a>
+      <div><a class="logo" href="#/" aria-label="Гранд-Офис — главная"><img src="./assets/logo.svg" alt="Гранд-Офис" width="180" height="38"></a><p>Офисная мебель в Перми</p></div>
+      <nav aria-label="Покупателям"><a href="#/catalog">Каталог</a><a href="#/project">Комплектация офисов</a><a href="#/delivery">Доставка и сборка</a><a href="#/service">Услуги и сервис</a></nav>
+      <nav aria-label="Компания"><a href="#/about">О компании</a><a href="#/projects">Проекты</a><a href="#/showroom">Шоурум</a><a href="#/contacts">Контакты</a></nav>
+      <div><a href="tel:+73422155898">+7 (342) 215-58-98</a><br><a href="mailto:grand-office159@yandex.ru">grand-office159@yandex.ru</a><br>Пермь, ул. Екатерининская, 10</div>
     </div>
+    <div class="shell footer-bottom"><span>© Гранд-Офис</span><a href="https://grand-office59.ru/privacy-policy/">Политика конфиденциальности</a></div>
   </footer>
-  <noscript><p class="shell">Для просмотра прототипа включите JavaScript.</p></noscript>
+  <dialog id="city-dialog"><form method="dialog"><h2>Ваш город</h2><label class="field-label" for="city-input">Город доставки</label><input class="field" id="city-input" maxlength="80" required><p class="small city-help">Для других городов подтвердим сроки и тариф по адресу.</p><div class="actions"><button class="btn" value="save">Сохранить</button><button class="btn secondary" value="cancel" formnovalidate>Закрыть</button></div></form></dialog>
+  <noscript><p class="shell">Для работы с каталогом включите JavaScript.</p></noscript>
 </body>
 </html>
