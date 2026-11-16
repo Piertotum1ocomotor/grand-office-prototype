@@ -22,7 +22,8 @@ const site = (() => {
     if (!result.ok) throw new Error('Не удалось загрузить данные');
     return result.json();
   };
-  const backend = get('./site.json').then((data) => data.backend === true).catch(() => false);
+  const config = get('./site.json').catch(() => ({}));
+  const backend = config.then((data) => data.backend === true);
   const catalog = backend.then((enabled) => get(enabled ? './api/catalog' : './data/catalog.json')).catch(() => null);
   const datasets = new Map();
   const getDetails = async (id) => {
@@ -67,5 +68,5 @@ const site = (() => {
     ['Мебель для зон ожидания','7–14 дней','waiting'],
     ['Металлическая мебель и сейфы','5–10 дней','metal']
   ];
-  return { original, email, phone, escape, normalize, format, money, session, save, catalog, getDetails, backend, post, mail, startCategories, projects, delivery };
+  return { original, email, phone, escape, normalize, format, money, session, save, config, catalog, getDetails, backend, post, mail, startCategories, projects, delivery };
 })();

@@ -19,9 +19,11 @@ async function requests() {
     const p=item.payload;
     return `<form class="panel" data-request="${item.id}"><h3>${item.kind==='order'?'Заказ':'Комплектация'} № ${item.id}</h3>
       <p>${html(p.name)} · ${html(p.contact)} · ${html(p.city)}</p>
-      ${p.address?'<p>'+html(p.address)+'</p>':''}${p.task?'<p>'+html(p.task)+'</p>':''}
-      ${p.seats?'<p>Мест: '+html(p.seats)+(p.date?' · '+html(p.date):'')+'</p>':''}
-      ${p.lines?'<ul>'+p.lines.map(r=>'<li>'+html(r.name)+' · '+html(r.variant)+' · '+r.qty+' шт. · '+html(r.price??'цена уточняется')+'</li>').join('')+'</ul>':''}
+      ${p.address?'<p>Адрес и условия подъёма: '+html(p.address)+'</p>':''}${p.task?'<p>'+html(p.task)+'</p>':''}
+      ${p.kit?'<p><strong>'+html(p.kit)+'</strong></p>':''}${p.product?'<p>Товар: '+html(p.product)+'</p>':''}
+      ${p.seats?'<p>Мест: '+html(p.seats)+(p.date?' · дата готовности офиса: '+html(p.date):'')+'</p>':''}
+      ${p.lines?'<ul>'+p.lines.map(r=>'<li>'+[html(r.name),html(r.variant),r.qty+' шт.',r.price==null?'цена уточняется':html(r.price)+' ₽ за шт.'].filter(Boolean).join(' · ')+'</li>').join('')+'</ul>':''}
+      ${p.estimate?.totalFrom==null?'':'<p>Ориентир без подъёма: от '+html(new Intl.NumberFormat('ru-RU').format(p.estimate.totalFrom))+' ₽</p>'}
       ${item.file_name?'<p><a class="text-link" href="/api/office/attachments/'+item.id+'">'+html(item.file_name)+'</a></p>':''}
       <label><span class="field-label">Статус</span><select class="field" name="state">${['Новая','В работе','КП отправлено','Подтверждено','Оплачено','Закрыто'].map(s=>'<option '+(item.state===s?'selected':'')+'>'+s+'</option>').join('')}</select></label>
       <button class="btn secondary">Сохранить статус</button><p class="result" role="status" hidden></p></form>`;

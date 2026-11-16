@@ -237,3 +237,11 @@ dialog h2{font-size:27px;margin-bottom:15px}
 }
 
 @media(min-width:721px) and (max-width:950px){.filters-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+.form-hint{margin-top:10px}
+.kit-actions{margin-top:12px}
+#estimate span:last-child,#estimate strong{flex-shrink:0}
+#project-form{scroll-margin-top:16px}
+.layout-panel{max-width:720px;margin-top:20px}
+.workspace-plan{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;padding:14px;background:var(--soft);border-radius:8px}
+.workspace-plan span{display:grid;place-items:center;min-height:48px;border:1px solid #c5aa9e;border-radius:4px;background:#f6e6dc;color:var(--brand-dark);font-size:16px}

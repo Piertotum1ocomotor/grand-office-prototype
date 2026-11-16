@@ -1,1 +1,13 @@
-{"officeCity":"Пермь"}
+{
+  "officeCity": "Пермь",
+  "workspaceKit": {
+    "id": "riva",
+    "name": "Комплект Riva",
+    "products": [887, 244689]
+  },
+  "localRates": {
+    "deliveryFrom": 1500,
+    "assemblyPercent": 10,
+    "liftFromPerFloor": 800
+  }
+}

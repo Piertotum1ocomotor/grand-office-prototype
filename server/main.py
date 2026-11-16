@@ -3,7 +3,7 @@ import base64
 import binascii
 import csv
 from contextlib import contextmanager
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import io
@@ -227,6 +227,51 @@ def request_order(db, lines):
         result.append({'id':product,'sku':row[2],'name':(label_override['name'] if label_override and label_override['name'] else row[1]),'variant':label,'qty':qty,'price':price})
     return result
 
+@lru_cache(maxsize=1)
+def site_config():
+    return json.loads((ROOT / 'site.json').read_text(encoding='utf-8'))
+
+def project_request(db,data):
+    count = integer(data.get('seats'),1,5000)
+    deadline = text(data,'date',20)
+    if deadline:
+        try:
+            deadline = date.fromisoformat(deadline).isoformat()
+        except ValueError:
+            raise Problem('Укажите дату готовности офиса.')
+    payload = {
+        'seats': count, 'date': deadline, 'task': text(data,'task',1600),
+        'address': text(data,'address',250), 'product': text(data,'product',350)
+    }
+    choice = text(data,'kit',40)
+    config = site_config()
+    kit = config.get('workspaceKit')
+    if not choice:
+        return payload
+    if not kit or choice != kit['id']:
+        raise Problem('Выберите комплект из списка.')
+    output = []
+    for product in kit['products']:
+        product_row = record(product)
+        manual = edit_map(db,'edits',product).get(0)
+        supplier = edit_map(db,'supplier_values',product).get(0)
+        updated_price, _ = combined(manual,supplier)
+        content = db.execute('SELECT name FROM product_content WHERE product=?',(product,)).fetchone()
+        output.append({
+            'id': product, 'name': (content['name'] if content and content['name'] else product_row[1]),
+            'sku': product_row[2], 'qty': count, 'price': updated_price if updated_price is not None else product_row[3]
+        })
+    rates = config.get('localRates')
+    local = text(data,'city',80,True).casefold() == config.get('officeCity','').casefold()
+    furniture = None if any(row['price'] is None for row in output) else round(sum(row['price'] * count for row in output),2)
+    delivery = rates['deliveryFrom'] if local and rates else None
+    assembly = round(furniture * rates['assemblyPercent'] / 100,2) if local and rates and furniture is not None else None
+    total = round(furniture + delivery + assembly,2) if all(value is not None for value in (furniture,delivery,assembly)) else None
+    payload.update(kit=kit['name'],lines=output,estimate={
+        'furniture':furniture,'deliveryFrom':delivery,'assembly':assembly,'totalFrom':total
+    })
+    return payload
+
 def create_request(data,ip):
     token = text(data,'token',64,True)
     if not re.fullmatch(r'[a-zA-Z0-9-]{16,64}',token):
@@ -250,7 +295,7 @@ def create_request(data,ip):
         if kind=='order':
             payload.update(address=text(data,'address',250), delivery=text(data,'delivery',140),lines=request_order(db,data.get('lines')))
         else:
-            payload.update(seats=integer(data.get('seats'),1,5000),date=text(data,'date',20),task=text(data,'task',1600),product=text(data,'product',350))
+            payload.update(project_request(db,data))
             filename,mime,content=attachment(data.get('file'))
         values = (token,kind,now(),json.dumps(payload,ensure_ascii=False),filename,mime,content)
         db.execute('INSERT OR IGNORE INTO requests(token,kind,created,payload,file_name,file_type,file_data) VALUES(?,?,?,?,?,?,?)',values)
@@ -384,7 +429,7 @@ class SiteServer(BaseHTTPRequestHandler):
 
     def route_get(self,path,args):
         if path=='/site.json':
-            return self.response(200,{'backend':True})
+            return self.response(200,{**site_config(),'backend':True})
         if path=='/api/health':
             return self.response(200,{'ok':True})
         if path=='/api/catalog':
