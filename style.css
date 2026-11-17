@@ -365,7 +365,7 @@ main:focus{outline:none}
  .home-delivery{margin-bottom:34px}
  .service-steps{grid-template-columns:1fr}
  .kit-row{grid-template-columns:minmax(0,1fr) 78px}
- .kit-row .field{padding-inline:7px}
+ .kit-row input.field{padding-inline:7px}
 }
 
 .home-types{margin:0 0 14px}
