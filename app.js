@@ -112,7 +112,7 @@ const productTypes = {
   shelving: ['Стеллажи', /^стеллаж(?:и|а|ей|у|ам|ом)?$/],
   sofas: ['Диваны', /^диван(?:ы|а|ов|у|ам|ами|е|ах|ом)?$/]
 };
-function searchProducts(query, series) {
+function searchProducts(query) {
   const string = normalize(query).trim();
   const exact = string ? catalogItems.filter(entry=>normalize(entry.sku).trim()===string) : [];
   if (exact.length) return {items:exact,exact:true,types:new Set()};
@@ -126,7 +126,6 @@ function searchProducts(query, series) {
     return !key;
   }).filter(word=>!types.size || !/^офисн[а-я]*$/.test(word));
   const officeTable = types.size===1 && types.has('tables') && words.some(word=>/^офисн[а-я]*$/.test(word));
-  const seriesTerm = normalize(series);
   const items = catalogItems.filter(entry=>{
     if (types.size && !types.has(entry.type)) return false;
     const name = normalize(entry.name);
@@ -136,22 +135,77 @@ function searchProducts(query, series) {
       if (!size.every((value,i)=>nameSize?.[i]===value)) return false;
     }
     const searchable = name + ' ' + normalize(entry.sku);
-    if (seriesTerm && !name.includes(seriesTerm) &&
-      !entry.categories.some(id=>normalize(catById.get(id)?.name).includes(seriesTerm))) return false;
     return terms.every(word=>searchable.includes(word));
   });
   return {items,exact:false,types};
 }
 
 const catalogNumber = new Intl.NumberFormat('ru-RU');
-const partLabels = {parts:'Комплектующие',modules:'Модули'};
+const partLabels = {furniture:'Готовая мебель',modules:'Модули',parts:'Комплектующие'};
 const tablePurposes = {work:'Рабочие',meeting:'Для переговоров',coffee:'Журнальные'};
+const chairPurposes = {operator:'Для персонала',executive:'Для руководителя',guest:'Для посетителей',gaming:'Игровые'};
+const tableShapes = {straight:'Прямые',corner:'Угловые',round:'Круглые',oval:'Овальные'};
+const allPurposes={...tablePurposes,...chairPurposes};
+const catalogRanges=[
+  {label:'Цена',unit:'₽',low:'min',high:'max',limit:100000000,step:.01},
+  {label:'Ширина',unit:'мм',low:'wmin',high:'w',limit:10000,dimension:0},
+  {label:'Глубина',unit:'мм',low:'dmin',high:'d',limit:10000,dimension:1},
+  {label:'Высота',unit:'мм',low:'hmin',high:'h',limit:10000,dimension:2}
+];
+const rangeFields=catalogRanges.flatMap(({low,high})=>[low,high]);
+const dimensionFields=rangeFields.slice(2);
+const filterFields=[...rangeFields,'use','shape','k','series','unknown'];
+
+function catalogBound(raw,range) {
+  if (raw==null || !String(raw).trim()) return null;
+  const value=Number(raw);
+  return Number.isFinite(value) && value>=0 && value<=range.limit && (range.step || Number.isInteger(value)) ? value : null;
+}
+
+function getCatalogRanges(settings) {
+  return catalogRanges.map(range=>({...range,min:catalogBound(settings.get(range.low),range),max:catalogBound(settings.get(range.high),range)}));
+}
+
+const hasBounds=range=>range.min!=null || range.max!=null;
+const inRange=(value,{min,max})=>value!=null && (min==null || value>=min) && (max==null || value<=max);
 function matchesTablePurpose(item, purpose) {
   if (item.type!=='tables') return false;
   const name=normalize(item.name);
-  if (purpose==='work') return !/журнальн|переговор|туалетн|приставн|подставн|обеденн|сервировочн|теннисн/.test(name);
+  if (purpose==='work') return !/журнальн|переговор|конференц|туалетн|приставн|подставн|обеденн|сервировочн|теннисн/.test(name);
   if (purpose==='meeting') return /переговор|конференц/.test(name);
   return /журнальн/.test(name);
+}
+const chairCategories={
+  operator:['kresla-dlya-personala'],
+  executive:['kresla-dlya-rukovoditelya'],
+  guest:['konferencz-kresla','ofisnye-stulya'],
+  gaming:['igrovye-kresla']
+};
+const chairNames={operator:/для персонала|операторск/,executive:/для руководител|руководительск/,guest:/для посетител|конференц/,gaming:/игров|геймер/};
+function matchesPurpose(item,purpose) {
+  if (Object.hasOwn(tablePurposes,purpose)) return matchesTablePurpose(item,purpose);
+  return item.type==='chairs' && (chairNames[purpose].test(normalize(item.name)) ||
+    item.categories.some(id=>chairCategories[purpose].includes(categoryRoot(catById.get(id))?.slug)));
+}
+
+function matchesTableShape(item,shape) {
+  if (item.type!=='tables' || item.kind!=='furniture') return false;
+  const name=normalize(item.name).split(/\s+(?:с|со|на)\s+(?:тумб|опор|полк|ножк|экран)/,1)[0];
+  const shapes={straight:/\b(?:straight)\b|прям(?:ой|оугольн|ые)/,corner:/углов|г-образн/,round:/кругл/,oval:/овал/};
+  if (shape==='straight' && /углов|г-образн|кругл|овал/.test(name)) return false;
+  return shapes[shape].test(name);
+}
+
+function matchesSeries(item,term) {
+  if (!term || normalize(item.name).includes(term)) return true;
+  return item.categories.some(id=>{
+    let category=catById.get(id);
+    for (let level=0;category && level<12;level++) {
+      if (normalize(category.name).includes(term)) return true;
+      category=catById.get(category.parent);
+    }
+    return false;
+  });
 }
 const selectedCategory = (key) => catBySlug.get(key) || catById.get(Number(key));
 const catalogLink = (settings, patch = {}) => {
@@ -166,14 +220,16 @@ function catalogSettings(args) {
     if (!settings.has('t')) settings.set('t',legacy);
     settings.delete('c');
   }
+  if (!getCatalogRanges(settings).slice(1).some(hasBounds)) settings.delete('unknown');
   return settings;
 }
 
+const categoryPatch=(entry)=>({c:entry.slug || entry.id,t:null,use:null,shape:null,k:null,p:null});
 function categoryItems(entries, selected, settings) {
   const path = new Set();
   for (let item=selected; item && !path.has(item.id); item=catById.get(item.parent)) path.add(item.id);
   function link(entry,title=entry.name) {
-    return '<a href="'+e(catalogLink(settings,{c:entry.slug || entry.id,p:null}))+'" '+(entry.id===selected?.id?'aria-current="page"':'')+'>'+e(title)+'</a>';
+    return '<a href="'+e(catalogLink(settings,categoryPatch(entry)))+'" '+(entry.id===selected?.id?'aria-current="page"':'')+'>'+e(title)+'</a>';
   }
   return entries.filter(entry=>!entry.empty || path.has(entry.id)).map(entry=>{
     const children = (catChildren.get(entry.id) || []).filter(child=>!child.empty || path.has(child.id));
@@ -184,18 +240,25 @@ function categoryItems(entries, selected, settings) {
   }).join('');
 }
 
-function catalogResults(settings, selected, type, part, query, series, budget, width) {
-  const search = searchProducts(query,series);
-  const purpose = Object.hasOwn(tablePurposes,settings.get('use')) ? settings.get('use') : '';
-  const eligible = search.items.filter(entry=>{
-    if (!matchesCategory(entry,selected) || (type && entry.type!==type)) return false;
-    if (part && entry.kind!==part) return false;
-    if (purpose && !matchesTablePurpose(entry,purpose)) return false;
-    if (!part && !search.exact && (type || search.types.size) && entry.kind!=='furniture') return false;
-    return !budget || (entry.price!=null && entry.price<=budget);
-  });
-  const known = width ? eligible.filter(entry=>entry.dimensions?.[0]>0 && entry.dimensions[0]<=width) : eligible;
-  const missing = width && settings.get('unknown')==='1' ? eligible.filter(entry=>!entry.dimensions?.[0]) : [];
+function catalogResults(settings,{selected,type,part,query,series,purpose,shape,ranges}) {
+  const search = searchProducts(query);
+  const [priceBounds,...sizeBounds]=ranges;
+  const dimensions=sizeBounds.filter(hasBounds);
+  const seriesTerm=normalize(series.trim());
+  const includeUnknown=settings.get('unknown')==='1';
+  const known=[],missing=[];
+  for (const entry of search.items) {
+    if (!matchesCategory(entry,selected) || (type && entry.type!==type)) continue;
+    if (part && entry.kind!==part) continue;
+    if (purpose && !matchesPurpose(entry,purpose)) continue;
+    if (shape && !matchesTableShape(entry,shape)) continue;
+    if (!part && !search.exact && (type || search.types.size || purpose || shape) && entry.kind!=='furniture') continue;
+    if ((hasBounds(priceBounds) && !inRange(entry.price,priceBounds)) || !matchesSeries(entry,seriesTerm)) continue;
+    if (dimensions.some(range=>entry.dimensions?.[range.dimension]>0 && !inRange(entry.dimensions[range.dimension],range))) continue;
+    const incomplete=dimensions.some(range=>!(entry.dimensions?.[range.dimension]>0));
+    if (!incomplete) known.push(entry);
+    else if (includeUnknown) missing.push(entry);
+  }
   const sort = settings.get('sort');
   const byPrice = sort==='up' ? (a,b)=>(a.price ?? Infinity)-(b.price ?? Infinity)
     : sort==='down' ? (a,b)=>(b.price ?? -1)-(a.price ?? -1) : ()=>0;
@@ -204,58 +267,97 @@ function catalogResults(settings, selected, type, part, query, series, budget, w
   return [...known.sort(order),...missing.sort(order)];
 }
 
+function catalogRangeFields(range) {
+  const label=range.label+', '+range.unit;
+  const field=(name,caption,value)=>'<label><span>'+caption+'</span><input class="field" type="number" name="'+name+
+    '" aria-label="'+range.label+' '+caption.toLowerCase()+', '+range.unit+'" min="0" max="'+range.limit+
+    '" step="'+(range.step || 1)+'" inputmode="'+(range.step?'decimal':'numeric')+'" value="'+(value ?? '')+'"></label>';
+  return '<fieldset class="catalog-range"><legend>'+label+'</legend><div class="range-inputs">'+
+    field(range.low,'От',range.min)+field(range.high,'До',range.max)+'</div></fieldset>';
+}
+
+function catalogFilterSelect(name,label,choices,value,placeholder) {
+  return '<label><span class="field-label">'+label+'</span><select class="field" name="'+name+'"><option value="">'+placeholder+'</option>'+
+    Object.entries(choices).map(([key,text])=>'<option value="'+key+'" '+(value===key?'selected':'')+'>'+text+'</option>').join('')+'</select></label>';
+}
+
 function catalogPage(settings, preview, unavailable) {
   if (unavailable) return page('Каталог', '<p class="intro">Каталог временно недоступен. <a class="text-link" href="'+site.original+'/shop/">Открыть каталог «Гранд-Офиса»</a></p>');
   const c = settings.get('c') || '';
   const type = Object.hasOwn(productTypes,settings.get('t')) ? settings.get('t') : '';
   const part = Object.hasOwn(partLabels,settings.get('k')) ? settings.get('k') : '';
-  const purpose = Object.hasOwn(tablePurposes,settings.get('use')) ? settings.get('use') : '';
+  const purpose = Object.hasOwn(allPurposes,settings.get('use')) ? settings.get('use') : '';
+  const shape = Object.hasOwn(tableShapes,settings.get('shape')) ? settings.get('shape') : '';
   const query = (settings.get('q') || '').slice(0,120);
   const series = (settings.get('series') || '').slice(0,60);
   const sort = settings.get('sort') || '';
-  const budget = Math.max(0,Number(settings.get('max')) || 0);
-  const width = Math.max(0,Number(settings.get('w')) || 0);
+  const ranges=getCatalogRanges(settings);
+  const [priceBounds,...dimensionBounds]=ranges;
+  const dimensions=dimensionBounds.filter(hasBounds);
   const includeUnknown = settings.get('unknown')==='1';
   const selected = selectedCategory(c);
-  const matches = preview ? preview.rows.map(fromBrowse) : catalogResults(settings,selected,type,part,query,series,budget,width);
+  const matches = preview ? preview.rows.map(fromBrowse) : catalogResults(settings,{selected,type,part,query,series,purpose,shape,ranges});
   const count = preview?.count ?? matches.length;
   const totalPages = Math.max(1,Math.ceil(count/pageSize));
   const offset = catalogPageNumber(settings,totalPages);
-  const title = selected?.name || partLabels[part] || productTypes[type]?.[0] || 'Каталог офисной мебели';
+  const title = selected?.name || productTypes[type]?.[0] || partLabels[part] || 'Каталог офисной мебели';
   const toCatalog = (patch) => catalogLink(settings,patch);
   const levels = [];
   if (selected) {
     for (let entry=catById.get(selected.parent); entry && levels.length<12; entry=catById.get(entry.parent))
-      levels.unshift([entry.name,toCatalog({c:entry.slug || entry.id,p:null})]);
+      levels.unshift([entry.name,toCatalog(categoryPatch(entry))]);
   }
   if (selected || part || type) levels.unshift(['Каталог','#/catalog']);
   const chips = [
-    ['q',query&&'Поиск «'+query+'»'],['c',selected?.name],['t',productTypes[type]?.[0]],['use',tablePurposes[purpose]],['k',partLabels[part]],
-    ['max',budget&&'До '+format(budget)],['w',width&&'До '+width+' мм'],['series',series&&'Серия «'+series+'»'],
-    ['unknown',width&&includeUnknown&&'Ширина не указана'],['sort',sort==='up'?'Сначала дешевле':sort==='down'?'Сначала дороже':'']
+    ['q',query&&'Поиск «'+query+'»'],['c',selected?.name],['t',productTypes[type]?.[0]],['use',allPurposes[purpose]],
+    ['shape',tableShapes[shape]],['k',partLabels[part]],
+    ...ranges.flatMap(range=>{
+      const amount=value=>range.dimension===undefined ? format(value) : catalogNumber.format(value)+' мм';
+      const kind=range.dimension===undefined?'':range.label+' ';
+      return [[range.low,range.min!=null && kind+(kind?'от ':'От ')+amount(range.min)],
+        [range.high,range.max!=null && kind+(kind?'до ':'До ')+amount(range.max)]];
+    }),
+    ['series',series&&'Серия «'+series+'»'],['unknown',dimensions.length&&includeUnknown&&'Без части габаритов'],
+    ['sort',sort==='up'?'Сначала дешевле':sort==='down'?'Сначала дороже':'']
   ].filter(([,label])=>label);
-  const filters = [
-    '<label><span class="field-label">Цена до, ₽</span><input class="field" type="number" name="max" min="0" max="100000000" value="'+(budget||'')+'"></label>',
-    '<label><span class="field-label">Ширина до, мм</span><input class="field" type="number" name="w" min="0" max="10000" value="'+(width||'')+'"></label>',
-    '<label><span class="field-label">Серия</span><input class="field" name="series" maxlength="60" placeholder="Например, Riva" value="'+e(series)+'"></label>',
-    '<label><span class="field-label">Вид позиции</span><select class="field" name="k"><option value="">По разделу и типу</option>'+
-      Object.entries(partLabels).map(([key,label])=>'<option value="'+key+'" '+(part===key?'selected':'')+'>'+label+'</option>').join('')+'</select></label>'
-  ];
+  const root=categoryRoot(selected)?.slug;
+  const chairSection=Object.values(chairCategories).some(slugs=>slugs.includes(root));
+  const tableSection=/^стол(?:ы|а)?(?:\s|$)/i.test(selected?.name || '');
+  const desktop = matchMedia('(min-width: 961px)').matches;
+  const forTables=type==='tables' || (!type && (tableSection || shape || Object.hasOwn(tablePurposes,purpose)));
+  const forChairs=type==='chairs' || (!type && (chairSection || Object.hasOwn(chairPurposes,purpose)));
+  const purposeOptions=forTables?tablePurposes:forChairs?chairPurposes:null;
+  const filters=catalogRangeFields(priceBounds)+
+    '<details class="filter-section" '+(dimensions.length || desktop?'open':'')+'><summary>Габариты</summary><div class="filter-section-body">'+
+    dimensionBounds.map(catalogRangeFields).join('')+'<label class="unknown-width"><input type="checkbox" name="unknown" value="1" '+
+    (includeUnknown?'checked':'')+' '+(dimensions.length?'':'disabled')+'> Включить товары без всех указанных габаритов</label></div></details>'+
+    '<details class="filter-section" '+(purpose || shape || series || part || forTables || forChairs?'open':'')+
+    '><summary>Характеристики</summary><div class="filter-section-body">'+
+    (purposeOptions?catalogFilterSelect('use','Назначение',purposeOptions,purpose,'Любое'):'')+
+    (forTables?catalogFilterSelect('shape','Форма',tableShapes,shape,'Любая'):'')+
+    catalogFilterSelect('k','Вид позиции',partLabels,part,'По разделу и типу')+
+    '<label><span class="field-label">Серия</span><input class="field" name="series" maxlength="60" placeholder="Например, Riva" value="'+e(series)+'"></label></div></details>';
   const sortControl = '<label class="sort-control"><span>Сортировка</span><select class="field" id="catalog-sort"><option value="">По умолчанию</option>'+
     '<option value="up" '+(sort==='up'?'selected':'')+'>Сначала дешевле</option><option value="down" '+(sort==='down'?'selected':'')+'>Сначала дороже</option></select></label>';
   const items = preview ? matches : matches.slice((offset-1)*pageSize,offset*pageSize);
-  const known = items.filter(entry=>!width || entry.dimensions?.[0]);
+  const complete=entry=>dimensions.every(range=>entry.dimensions?.[range.dimension]>0);
+  const known = items.filter(complete);
+  const incompleteTitle=dimensions.length===1&&dimensions[0].dimension===0?'Ширина не указана':'Не все габариты указаны';
   const groups = [
     [null,known.filter(entry=>entry.kind==='furniture')],
     ['Модули',known.filter(entry=>entry.kind==='modules')],
     ['Комплектующие',known.filter(entry=>entry.kind==='parts')],
-    ['Ширина не указана',items.filter(entry=>width && !entry.dimensions?.[0])]
+    [incompleteTitle,items.filter(entry=>!complete(entry))]
   ];
   const grid = groups.filter(([,rows])=>rows.length).map(([heading,rows])=>'<section class="catalog-group">'+
     (heading?'<h2>'+heading+'</h2>':'')+
-    (heading==='Ширина не указана'?'<p class="small">Эти позиции нужно проверить по размерам перед заказом.</p>':'')+
+    (heading===incompleteTitle?'<p class="small">Размеры этих товаров нужно уточнить перед заказом.</p>':'')+
     '<div class="product-grid catalog-grid">'+rows.map(card).join('')+'</div></section>').join('');
-  const empty = '<div class="empty">По этому запросу ничего не найдено. <a class="text-link" href="#/catalog?q='+encodeURIComponent('офисные столы')+'">Офисные столы</a> · <a class="text-link" href="#/catalog?t=chairs">Кресла</a> · <a class="text-link" href="#/catalog">Весь каталог</a></div>';
+  const cleared=toCatalog({...Object.fromEntries(filterFields.map(key=>[key,null])),p:null});
+  const filterCount=chips.filter(([key])=>filterFields.includes(key)).length;
+  const empty = '<div class="empty">По этому запросу ничего не найдено. '+(filterCount?
+    '<a class="text-link" href="'+e(cleared)+'">Очистить фильтры</a>':
+    '<a class="text-link" href="#/catalog">Открыть весь каталог</a>')+'</div>';
   const pages = [...new Set([1,offset-1,offset,offset+1,totalPages])].filter(n=>n>=1 && n<=totalPages).sort((a,b)=>a-b);
   const pagination = totalPages>1 ? '<nav class="pagination" aria-label="Страницы каталога">'+
     (offset>1?'<a class="btn secondary" href="'+e(toCatalog({p:offset-1}))+'">Назад</a>':'')+
@@ -265,24 +367,19 @@ function catalogPage(settings, preview, unavailable) {
     (totalPages>5?'<form id="catalog-jump"><label>Страница <input class="field" type="number" name="p" min="1" max="'+totalPages+'" value="'+offset+'" required></label><button type="submit" class="btn secondary">Перейти</button></form>':'')+'</nav>' : '';
   const children = selected ? (catChildren.get(selected.id) || []).filter(child=>!child.empty) : [];
   const sections = children.length>0 && children.length<=12
-    ? '<div class="catalog-subsections"><span>Подразделы</span>'+children.map(entry=>'<a class="text-link" href="'+e(toCatalog({c:entry.slug || entry.id,p:null}))+'">'+e(entry.name)+'</a>').join('')+'</div>' : '';
-  const desktop = matchMedia('(min-width: 961px)').matches;
-  const filterCount = chips.filter(([key])=>['max','w','series','k','unknown'].includes(key)).length;
+    ? '<div class="catalog-subsections"><span>Подразделы</span>'+children.map(entry=>'<a class="text-link" href="'+e(toCatalog(categoryPatch(entry)))+'">'+e(entry.name)+'</a>').join('')+'</div>' : '';
   return page(title,'<div class="catalog-shell"><aside class="catalog-sidebar" aria-label="Фильтры и разделы">'+
     '<details class="catalog-filters" '+(desktop?'open':'')+'><summary>Фильтры'+(filterCount?' <span>'+filterCount+'</span>':'')+'</summary><form id="filters" class="filters-grid">'+
-    filters.join('')+'<label class="unknown-width"><input type="checkbox" name="unknown" value="1" '+
-    (includeUnknown?'checked':'')+'> Включить позиции без указанной ширины</label><button class="btn" type="submit">Применить</button>'+
-    (filterCount?'<a class="text-link reset-filters" href="'+e(toCatalog({max:null,w:null,series:null,k:null,unknown:null,p:null}))+'">Очистить фильтры</a>':'')+
+    filters+'<button class="btn" type="submit">Применить</button>'+
+    (filterCount?'<a class="text-link reset-filters" href="'+e(cleared)+'">Очистить фильтры</a>':'')+
     '</form></details><details class="catalog-directory" '+(desktop || selected?'open':'')+'><summary>Разделы каталога</summary><nav aria-label="Разделы каталога">'+
     categoryItems(catChildren.get(0) || [],selected,settings)+'</nav></details></aside><div class="catalog-results"><div class="catalog-tools">'+
     (selected?.partsOnly?'<p class="catalog-notice">В этом разделе собраны отдельные модули и комплектующие. <a class="text-link" href="#/catalog'+
       (/шкаф/i.test(selected.name)?'?t=cabinets">Посмотреть готовые шкафы':'">Посмотреть готовую мебель')+'</a></p>':'')+sections+
     '<nav class="quick-categories" aria-label="Тип мебели">'+['',...Object.keys(productTypes)].map(key=>'<a class="chip" href="'+
-      e(toCatalog({t:key,use:null,p:null}))+'" '+(type===key?'aria-current="page"':'')+'>'+(key?productTypes[key][0]:'Все типы')+'</a>').join('')+'</nav>'+
-    (type==='tables'?'<div class="catalog-subsections"><span>Назначение</span>'+Object.entries(tablePurposes).map(([key,label])=>
-      '<a class="text-link" href="'+e(toCatalog({use:key===purpose?null:key,p:null}))+'" '+(key===purpose?'aria-current="true"':'')+'>'+label+'</a>').join('')+'</div>':'')+
+      e(toCatalog({t:key,use:null,shape:null,k:null,p:null}))+'" '+(type===key?'aria-current="page"':'')+'>'+(key?productTypes[key][0]:'Все типы')+'</a>').join('')+'</nav>'+
     (chips.length?'<div class="applied-filters" aria-label="Применённые фильтры">'+chips.map(([key,label])=>'<a class="chip" aria-label="Снять: '+e(label)+'" href="'+
-      e(toCatalog({[key]:null,p:null,...(key==='w'?{unknown:null}:key==='t'?{use:null}:{})}))+'">'+e(label)+' <span aria-hidden="true">×</span></a>').join('')+'</div>':'')+
+      e(toCatalog({[key]:null,p:null,...(dimensionFields.includes(key) && !dimensionFields.some(other=>other!==key&&settings.has(other))?{unknown:null}:key==='t'?{use:null,shape:null}:{})}))+'">'+e(label)+' <span aria-hidden="true">×</span></a>').join('')+'</div>':'')+
     '</div><div class="catalog-heading"><p class="count-label">Найдено: '+catalogNumber.format(count)+'</p>'+sortControl+
     '</div>'+ (grid || empty)+pagination+'</div></div>',levels);
 }
@@ -498,7 +595,7 @@ function projectPage(target, option, example, qty, useKit, drawnPlan) {
       <p class="small" id="quote-kit" aria-live="polite"></p>
       <label><span class="field-label">Город</span><input class="field" name="city" maxlength="80" value="${e(city)}" required></label>
       <label><span class="field-label">Адрес и условия подъёма</span><input class="field" name="address" maxlength="250" autocomplete="street-address" placeholder="Улица, этаж, есть ли грузовой лифт"></label>
-      <div class="form-two"><label><span class="field-label">${target?'Количество изделий':'Рабочих мест'}</span><input class="field" type="number" name="${target?'quantity':'seats'}" min="1" max="5000" value="${target?1:useKit?qty:drawnPlan?.items.filter(item=>item.type==='desk').length || ''}" ${useKit || target?'required':''}></label><label><span class="field-label">${target?'К какой дате нужна мебель':'К какой дате офис должен быть готов'}</span><input class="field" type="date" name="date"></label></div>
+      <div class="form-two"><label><span class="field-label">${target?'Количество изделий':'Рабочих мест'}</span><input class="field" type="number" name="${target?'quantity':'seats'}" min="1" max="5000" value="${target?1:useKit?qty:drawnPlan && workspace.seats(drawnPlan) || ''}" ${useKit || target?'required':''}></label><label><span class="field-label">${target?'К какой дате нужна мебель':'К какой дате офис должен быть готов'}</span><input class="field" type="date" name="date"></label></div>
       <label><span class="field-label">Задача и бюджет</span><textarea class="field" name="task" rows="3" maxlength="1600" placeholder="Что нужно поставить и какой бюджет вы заложили"></textarea></label>
       ${hasBackend?'<label><span class="field-label">План или ТЗ, PDF или изображение до 8 МБ</span><input class="field" type="file" name="file" accept="application/pdf,image/jpeg,image/png"></label>':''}
       ${contactFields()}<button class="btn" type="submit">${hasBackend?'Отправить запрос':'Открыть письмо для расчёта'}</button>
@@ -560,7 +657,7 @@ function mountPlanner(args) {
   const kit=kitSelection(qty);
   const models=kit.flatMap(({group})=>group.models.map(id=>productById.get(id)).filter(item=>item?.dimensions?.[0] && item.dimensions[1]).map(item=>({
     type:group.id,product:item.id,label:group.id==='desk'?'Riva '+item.name.split(/\s+/)[0]:kitOptionLabel(group.id,item),
-    width:item.dimensions[0]/1000,depth:item.dimensions[1]/1000
+    width:item.dimensions[0]/1000,depth:item.dimensions[1]/1000,price:item.price
   })));
   const selectedDesk=kit.find(item=>item.group.id==='desk')?.id;
   const selectedChair=kit.find(item=>item.group.id==='chair')?.id;
@@ -568,7 +665,7 @@ function mountPlanner(args) {
   return officePlanner.mount(main.querySelector('#office-planner'),{
     draft:displayDraft,count:qty,models,defaultDesk:selectedDesk,defaultChair:selectedChair,
     onSave(plan) {
-      roomDraft={...plan,seats:workspace.composition(plan).filter(item=>item.type==='desk').reduce((sum,item)=>sum+item.count,0)};
+      roomDraft={...plan,seats:workspace.seats(plan)};
       site.save('room-plan',roomDraft);
     },
     onQuote(plan) {
@@ -590,7 +687,7 @@ function mountPlanner(args) {
 function planText(plan) {
   if (!plan?.items) return [];
   const counts=workspace.composition(plan).map(item=>item.label+' — '+item.count+' шт.');
-  return ['План помещения '+plan.width+' × '+plan.depth+' м',...counts];
+  return [(workspace.offices[plan.office] || 'План помещения')+' · '+plan.width+' × '+plan.depth+' м',...counts];
 }
 
 function productRequestAttributes(item, option) {
@@ -765,7 +862,7 @@ async function loadCatalog(settings) {
   const chosen = selectedCategory(settings.get('c'));
   const kind = settings.get('t');
   const scope = chosen && kind ? '' : chosen?.id || kind || 'all';
-  const filtered = ['q','k','max','w','series','sort','use'].some(key=>settings.get(key));
+  const filtered = ['q','sort',...filterFields].some(key=>settings.get(key));
   if (!filtered && Object.hasOwn(catalog.previews,scope)) {
     const count=catalog.previews[scope];
     const number=catalogPageNumber(settings,Math.max(1,Math.ceil(count/pageSize)));
@@ -870,6 +967,7 @@ async function render(move = false) {
   prepareLinks(main);
   if (pathRouting) {
     prepareLinks(document.querySelector('.site-header'));
+    prepareLinks(document.querySelector('#mobile-menu'));
     document.querySelector('.skip').href=location.pathname+location.search+'#main';
     const canonical=document.querySelector('link[rel="canonical"]');
     if (canonical && key!=='missing') {
@@ -1032,6 +1130,13 @@ main.addEventListener('change',event=>{
 
 main.addEventListener('input',event=>{
   const input=event.target;
+  if (input.form?.id==='filters' && rangeFields.includes(input.name)) {
+    const form=input.form;
+    for (const key of rangeFields) form.elements[key].setCustomValidity('');
+    const unknown=form.elements.unknown;
+    unknown.disabled=!dimensionFields.some(key=>form.elements[key].value!=='');
+    if (unknown.disabled) unknown.checked=false;
+  }
   if (input.form?.dataset.kind!=='project') return;
   if (input.name==='city') updateEstimate();
   if (input.name==='seats' && input.form.elements.kit?.value && validSeats(input.value)) syncQuoteCount(validSeats(input.value));
@@ -1072,10 +1177,18 @@ main.addEventListener('submit',async(event)=>{
   const form=event.target;
   event.preventDefault();
   if (form.id==='filters') {
+    const fields=new FormData(form);
+    const ranges=getCatalogRanges(fields);
+    const reversed=ranges.find(range=>range.min!=null && range.max!=null && range.min>range.max);
+    if (reversed) {
+      const field=form.elements[reversed.high];
+      field.setCustomValidity('Значение «До» должно быть не меньше значения «От».');
+      field.reportValidity();
+      return;
+    }
     const patch={p:null,unknown:null};
-    for (const [key,value] of new FormData(form)) patch[key]=String(value).trim();
-    if (!Number(patch.max)) patch.max=null;
-    if (!Number(patch.w)) {patch.w=null;patch.unknown=null;}
+    for (const [key,value] of fields) patch[key]=String(value).trim();
+    if (!ranges.slice(1).some(hasBounds)) patch.unknown=null;
     navigate(catalogLink(catalogSettings(getRoute().args),patch));
     return;
   }
@@ -1148,27 +1261,45 @@ saveCart();
 const catalogMenu=document.querySelector('.catalog-menu');
 const catalogTrigger=document.querySelector('#catalog-trigger');
 const catalogPanel=document.querySelector('#header-catalog');
+const catalogToggle=document.querySelector('.catalog-toggle');
 const hoverCatalog=matchMedia('(hover: hover) and (pointer: fine)');
-let menuFromHover=false;
+const mobileMenu=document.querySelector('#mobile-menu');
+const mobileMenuTrigger=document.querySelector('.mobile-menu-trigger');
+const mobileNavigation=matchMedia('(max-width: 720px)');
+mobileMenuTrigger.addEventListener('click',()=>{
+  mobileMenu.showModal();
+  mobileMenuTrigger.setAttribute('aria-expanded','true');
+});
+mobileMenu.addEventListener('close',()=>mobileMenuTrigger.setAttribute('aria-expanded','false'));
+mobileMenu.addEventListener('click',event=>{
+  if (event.target.closest('a')) {
+    mobileMenu.close();
+  } else if (event.target===mobileMenu) {
+    const bounds=mobileMenu.getBoundingClientRect();
+    if (event.clientX<bounds.left) mobileMenu.close();
+  }
+});
+mobileNavigation.addEventListener('change',event=>{
+  if (!event.matches && mobileMenu.open) mobileMenu.close();
+});
 function showCatalogMenu(open) {
   catalogTrigger.setAttribute('aria-expanded',String(open));
+  catalogToggle.setAttribute('aria-expanded',String(open));
   catalogPanel.hidden=!open;
-  if (!open) menuFromHover=false;
 }
 catalogMenu.addEventListener('pointerenter',event=>{
-  if (event.pointerType!=='mouse' || !hoverCatalog.matches || !catalogPanel.hidden) return;
-  menuFromHover=true;
-  showCatalogMenu(true);
+  if (event.pointerType==='mouse' && hoverCatalog.matches) showCatalogMenu(true);
 });
 catalogMenu.addEventListener('pointerleave',()=>{
   if (hoverCatalog.matches && !catalogPanel.contains(document.activeElement)) showCatalogMenu(false);
 });
-catalogTrigger.addEventListener('click',()=>{
-  if (menuFromHover) {
-    menuFromHover=false;
-    return;
-  }
-  showCatalogMenu(catalogPanel.hidden);
+catalogTrigger.addEventListener('click',()=>showCatalogMenu(false));
+catalogToggle.addEventListener('click',()=>showCatalogMenu(catalogPanel.hidden));
+catalogTrigger.addEventListener('keydown',event=>{
+  if (event.key!=='ArrowDown') return;
+  event.preventDefault();
+  showCatalogMenu(true);
+  catalogPanel.querySelector('a')?.focus();
 });
 catalogMenu.addEventListener('focusout',event=>{
   if (!catalogMenu.contains(event.relatedTarget)) showCatalogMenu(false);
@@ -1181,8 +1312,9 @@ document.addEventListener('pointerdown',event=>{
 });
 document.addEventListener('keydown',event=>{
   if (event.key==='Escape' && !catalogPanel.hidden) {
+    const focused=catalogMenu.contains(document.activeElement);
     showCatalogMenu(false);
-    if (catalogMenu.contains(document.activeElement) || document.activeElement===document.body) catalogTrigger.focus();
+    if (focused) (hoverCatalog.matches?catalogTrigger:catalogToggle).focus();
   }
 });
 site.backend.then(value=>{hasBackend=value;return render();});

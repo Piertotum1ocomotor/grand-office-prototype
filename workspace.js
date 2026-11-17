@@ -6,6 +6,7 @@ const workspace = (() => {
     ['double','Два ряда'],
     ['islands','Группы по четыре']
   ];
+  const offices = {open:'Открытый офис',private:'Кабинет',meeting:'Переговорная',free:'Свободная расстановка'};
 
   function readNumber(value, minimum, maximum, fallback) {
     const number = Number(value);
@@ -17,7 +18,8 @@ const workspace = (() => {
       width: readNumber(value?.width,2,60,8),
       depth: readNumber(value?.depth,2,60,4.5),
       gap: readNumber(value?.gap,0.5,4,1),
-      layout: layouts.some(([id])=>id===value?.layout) ? value.layout : 'double'
+      layout: layouts.some(([id])=>id===value?.layout) ? value.layout : 'double',
+      office: Object.hasOwn(offices,value?.office) ? value.office : 'open'
     };
   }
 
@@ -32,9 +34,30 @@ const workspace = (() => {
   const round = value=>Math.round(value*1000)/1000;
   const snap = value=>Math.round(value*20)/20;
   const sizeOf = (item) => item.rotation % 180 ? {width:item.depth,depth:item.width} : {width:item.width,depth:item.depth};
+  const customDesk=(width,depth,height=.75)=>({
+    type:'desk',product:0,width,depth,height,
+    label:'Стол по размеру '+[width,depth,height].map(value=>Math.round(value*1000)).join(' × ')+' мм'
+  });
+  const itemKey=item=>item.product || (item.type==='desk'?'desk:'+item.width+':'+item.depth+':'+item.height:item.type);
 
   function arrange(count, desk, chair, room) {
     if (!Number.isInteger(count) || count < 1 || count > 40 || !desk || !chair) return null;
+    if (room.office==='meeting') {
+      const topCount=Math.ceil(count/2);
+      const width=Math.max(desk.width,topCount*chair.width);
+      const depth=desk.depth+chair.depth*(count>1?2:1);
+      const items=[
+        {...desk,id:1,x:(width-desk.width)/2,y:chair.depth,rotation:0},
+        ...Array.from({length:count},(_,i)=>{
+          const top=i<topCount;
+          const rowCount=top?topCount:count-topCount;
+          const index=top?i:i-topCount;
+          return {...chair,id:i+2,x:(width-rowCount*chair.width)/2+index*chair.width,
+            y:top?0:chair.depth+desk.depth,rotation:top?0:180};
+        })
+      ];
+      return center(items,width,depth,room);
+    }
     const columnWidth = Math.max(desk.width,chair.width);
     const pitch = desk.depth + chair.depth;
     const perRow = room.layout==='single' ? count : Math.ceil(count/2);
@@ -50,6 +73,10 @@ const workspace = (() => {
     }).flat();
     const width=Math.max(...items.map(item=>item.x+item.width));
     const depth=Math.max(...items.map(item=>item.y+item.depth));
+    return center(items,width,depth,room);
+  }
+
+  function center(items,width,depth,room) {
     if (width>room.width+epsilon || depth>room.depth+epsilon) return {width,depth,items:null};
     return {width,depth,items:items.map(item=>({...item,x:round(item.x+(room.width-width)/2),y:round(item.y+(room.depth-depth)/2)}))};
   }
@@ -78,10 +105,11 @@ const workspace = (() => {
   function composition(plan) {
     const groups=new Map();
     for (const item of plan.items) {
-      if (!item.product) continue;
-      const entry=groups.get(item.product);
+      if (!item.product && item.type!=='desk') continue;
+      const key=itemKey(item);
+      const entry=groups.get(key);
       if (entry) entry.count++;
-      else groups.set(item.product,{type:item.type,id:item.product,label:item.label,count:1});
+      else groups.set(key,{type:item.type,id:item.product,label:item.label,count:1});
     }
     return [...groups.values()];
   }
@@ -90,15 +118,20 @@ const workspace = (() => {
     const all=composition(plan);
     const desk=all.find(item=>item.type==='desk');
     const chair=all.find(item=>item.type==='chair');
-    if (!desk || !chair || desk.count!==chair.count || all.length!==new Set(all.map(item=>item.type)).size) return null;
+    if (!desk || !desk.id || !chair || desk.count!==chair.count || all.length!==new Set(all.map(item=>item.type)).size) return null;
     return {seats:desk.count,desk:desk.id,groups:all};
+  }
+
+  function seats(plan) {
+    const type=plan.office==='meeting'?'chair':'desk';
+    return plan.items.filter(item=>item.type===type).length;
   }
 
   function download(plan) {
     const scale=Math.min(112,1500/Math.max(plan.width,plan.depth));
     const inventory=new Map();
     for (const item of plan.items) {
-      const key=item.product || item.type;
+      const key=itemKey(item);
       if (!inventory.has(key)) inventory.set(key,{type:item.type,label:item.label,ids:[]});
       inventory.get(key).ids.push(item.id);
     }
@@ -114,7 +147,8 @@ const workspace = (() => {
     ctx.fillRect(0,0,canvas.width,canvas.height);
     ctx.font='18px sans-serif';
     ctx.fillStyle='#282828';
-    ctx.fillText('План офиса · '+plan.width+' × '+plan.depth+' м',padding,32);
+    const title=offices[plan.office] || 'План офиса';
+    ctx.fillText(title+' · '+plan.width+' × '+plan.depth+' м',padding,32);
     ctx.save();
     ctx.translate((canvas.width-plan.width*scale)/2,padding);
     for (let x=0;x<plan.width;x++) {
@@ -163,5 +197,5 @@ const workspace = (() => {
     },'image/png');
   }
 
-  return {layouts,labels,obstacles,maxItems,round,snap,planSettings,arrange,sizeOf,bounded,conflicts,composition,kitFor,download};
+  return {layouts,offices,labels,obstacles,maxItems,round,snap,planSettings,arrange,sizeOf,bounded,conflicts,composition,kitFor,seats,customDesk,download};
 })();

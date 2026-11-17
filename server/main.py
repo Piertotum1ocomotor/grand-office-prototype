@@ -358,6 +358,7 @@ def editable_plan(plan, kit_lines=None):
         raise Problem('Добавьте предметы на план.')
     models = {model:group['id'] for group in site_config()['workspaceKit']['groups'] for model in group['models']}
     furniture = Counter()
+    custom_desks = 0
     used_ids = set()
     entries = []
     boxes = []
@@ -371,6 +372,7 @@ def editable_plan(plan, kit_lines=None):
             raise Problem('Проверьте номера предметов и углы поворота.')
         used_ids.add(ident)
         kind = item.get('type')
+        extra = {}
         if model and models.get(model)==kind:
             row = record(model)
             if not row[11] or not all(row[11][:2]):
@@ -378,6 +380,13 @@ def editable_plan(plan, kit_lines=None):
             span, height = (size/1000 for size in row[11][:2])
             label = row[1]
             furniture[model] += 1
+        elif not model and kind=='desk':
+            span = plan_measure(item.get('width'),.3,4)
+            height = plan_measure(item.get('depth'),.3,4)
+            desk_height = plan_measure(item.get('height',.75),.4,1.6)
+            label = f'Стол по размеру {round(span*1000)} × {round(height*1000)} × {round(desk_height*1000)} мм'
+            extra['height'] = desk_height
+            custom_desks += 1
         elif not model and kind in ('door','column'):
             span = plan_measure(item.get('width'),.1,3)
             height = plan_measure(item.get('depth'),.1,3)
@@ -393,12 +402,15 @@ def editable_plan(plan, kit_lines=None):
             raise Problem('Устраните пересечения и проверьте границы комнаты.')
         boxes.append((x,y,w,h))
         entries.append({'id':ident,'type':kind,'product':model,'label':label,
-                        'x':x,'y':y,'width':span,'depth':height,'rotation':rotation})
-    if not furniture:
+                        'x':x,'y':y,'width':span,'depth':height,'rotation':rotation,**extra})
+    if not furniture and not custom_desks:
         raise Problem('Добавьте на план хотя бы один предмет мебели.')
-    if kit_lines is not None and dict(furniture)!={line['id']:line['qty'] for line in kit_lines}:
+    if kit_lines is not None and (custom_desks or dict(furniture)!={line['id']:line['qty'] for line in kit_lines}):
         raise Problem('Модели и количества в смете должны совпадать с планом.')
-    return {'v':2,'width':width,'depth':depth,'items':entries}
+    office = text(plan,'office',16) or 'open'
+    if office not in ('open','private','meeting','free'):
+        raise Problem('Выберите тип офиса из списка.')
+    return {'v':2,'office':office,'width':width,'depth':depth,'items':entries}
 
 def quote_plan(data, count, desk, kit_lines):
     plan = data.get('roomPlan')

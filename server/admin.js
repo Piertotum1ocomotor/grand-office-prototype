@@ -15,7 +15,7 @@ function roomSummary(plan,id) {
   if (plan.v!==2) return '<p>План: '+size+' · '+html(({single:'Один ряд',double:'Два ряда',islands:'Группы по четыре'})[plan.layout])+', между рядами или группами '+html(plan.gap)+' м.</p>';
   plans.set(id,plan);
   const models=workspace.composition(plan).map(item=>html(item.label)+' · '+item.count+' шт.').join('<br>');
-  return '<div class="quote-context"><p>План помещения · '+size+'</p><p class="small">'+models+'</p><button class="btn secondary" type="button" data-office-plan="'+id+'">Скачать план PNG</button></div>';
+  return '<div class="quote-context"><p>'+html(workspace.offices[plan.office] || 'План помещения')+' · '+size+'</p><p class="small">'+models+'</p><button class="btn secondary" type="button" data-office-plan="'+id+'">Скачать план PNG</button></div>';
 }
 document.addEventListener('click',event=>{
   const control=event.target.closest('[data-office-plan]');

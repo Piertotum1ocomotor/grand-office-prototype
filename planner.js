@@ -3,7 +3,7 @@
 const officePlanner = (() => {
   const format = new Intl.NumberFormat('ru-RU',{maximumFractionDigits:2});
   const escape = site.escape;
-  const {labels,obstacles,round,snap,sizeOf,bounded}=workspace;
+  const {labels,obstacles,offices,customDesk,round,snap,sizeOf,bounded}=workspace;
 
   function mount(root,{draft,count,models,defaultDesk,defaultChair,onSave,onQuote,onKit}) {
     const palette = Object.fromEntries(Object.keys(labels).map(type=>[type,
@@ -13,14 +13,17 @@ const officePlanner = (() => {
     const fromDraft = item => {
       if (!Number.isInteger(item.id) || item.id<1 || !Number.isFinite(item.x) || !Number.isFinite(item.y) ||
           ![0,90,180,270].includes(item.rotation) || !palette[item.type]) return null;
-      const model=palette[item.type].find(model=>model.product===item.product);
+      const custom=item.type==='desk' && item.product===0 && [item.width,item.depth].every(value=>Number.isFinite(value) && value>=.3 && value<=4);
+      const height=item.height>=.4 && item.height<=1.6 ? item.height : .75;
+      const model=custom ? customDesk(item.width,item.depth,height) : palette[item.type].find(model=>model.product===item.product);
       if (!model) return null;
       const size=obstacles[item.type] && [item.width,item.depth].every(value=>Number.isFinite(value) && value>=.1 && value<=3)
         ? {width:item.width,depth:item.depth} : {};
       return bounded({...item,...model,...size},config);
     };
     const requested=Math.min(count,40);
-    const desk=preset('desk',draft.desk || defaultDesk);
+    const savedDesk=Array.isArray(draft.items)?draft.items.find(item=>item.type==='desk'):null;
+    const desk=savedDesk ? fromDraft(savedDesk) || preset('desk',defaultDesk) : preset('desk',draft.desk || defaultDesk);
     const chair=preset('chair',draft.chair || defaultChair);
     const savedItems = draft.v===2 && Array.isArray(draft.items) && draft.items.length<=workspace.maxItems
       ? draft.items.map(fromDraft).filter(Boolean) : null;
@@ -38,6 +41,7 @@ const officePlanner = (() => {
     let selected=state.items[0]?.id;
     let message=!savedItems && initial && !initial.items ? fitMessage(initial,false) : '';
     let drag;
+    let roomEdit;
     const undo=[];
     const controller=new AbortController();
     const events={signal:controller.signal};
@@ -47,30 +51,41 @@ const officePlanner = (() => {
     const option=(value,text,active)=>'<option value="'+value+'" '+(active?'selected':'')+'>'+escape(text)+'</option>';
     const sizeLabel=item=>format.format(item.width)+' × '+format.format(item.depth)+' м';
     const showLabel=item=>labels[item.type]+' '+item.id+(item.label===labels[item.type]?'':' · '+item.label);
+    const customFields=(id,width,depth,height=750)=>'<div class="form-two custom-desk-fields" id="'+id+'" hidden>'+
+      field('deskWidth','Ширина стола, мм',300,4000,width,'1')+field('deskDepth','Глубина стола, мм',300,4000,depth,'1')+
+      field('deskHeight','Высота стола, мм',400,1600,height,'1')+'</div>';
+    const presetDeskOptions=palette.desk.map(model=>option(model.product,model.label+' · '+sizeLabel(model),desk?.product===model.product)).join('')+
+      option(0,'Стол по своим размерам',desk?.product===0);
 
     root.innerHTML=
       '<aside class="planner-sidebar"><section class="panel planner-room"><h2>Помещение</h2><form id="room-size" class="form-two">'+
-      field('width','Ширина, м',2,60,state.width)+field('depth','Глубина, м',2,60,state.depth)+
-      '</form><details class="planner-presets"><summary>Готовая расстановка</summary><form id="plan-presets">'+
-      field('seats','Рабочие места',1,40,requested,'1')+
+      field('width','Ширина комнаты, м',2,60,state.width,'0.01')+field('depth','Глубина комнаты, м',2,60,state.depth,'0.01')+
+      '</form><p id="room-area" class="room-area"></p><details class="planner-presets"><summary>Тип офиса и расстановка</summary><form id="plan-presets">'+
+      '<label><span class="field-label">Тип офиса</span><select class="field" name="office">'+Object.entries(offices).map(([key,label])=>option(key,label,state.office===key)).join('')+'</select></label>'+
+      '<div id="preset-furniture">'+field('seats','Количество мест',1,40,requested,'1')+
       '<label><span class="field-label">Схема</span><select class="field" name="layout">'+workspace.layouts.map(([id,label])=>option(id,label,state.layout===id)).join('')+'</select></label>'+
-      '<div class="form-two">'+field('gap','Между рядами или группами, м',0.5,4,state.gap)+
-      '<label><span class="field-label">Модель стола</span><select class="field" name="desk">'+palette.desk.map(model=>option(model.product,model.label,desk?.product===model.product)).join('')+'</select></label></div>'+
+      field('gap','Между рядами или группами, м',0.5,4,state.gap,'0.05')+
+      '<label><span class="field-label">Стол</span><select class="field" name="desk">'+presetDeskOptions+'</select></label>'+
+      customFields('preset-custom-desk',desk?.product===0?Math.round(desk.width*1000):1600,desk?.product===0?Math.round(desk.depth*1000):800,
+        desk?.product===0?Math.round(desk.height*1000):750)+'</div>'+
       '<p class="small">Заменяет расстановку мебели. Отменить можно над схемой.</p><button type="submit" class="btn secondary">Расставить мебель</button></form></details></section>'+
       '<section class="panel planner-library"><h2>Добавить на план</h2><div class="planner-kinds">'+Object.entries(labels).map(([id,label])=>
           '<button type="button" class="chip" data-plan-type="'+id+'" aria-pressed="'+String(id===type)+'"><i class="plan-swatch '+id+'" aria-hidden="true"></i>'+label+'</button>').join('')+
       '</div><label><span class="field-label">Размер или модель</span><select class="field" id="plan-library-item"></select></label>'+
+      customFields('library-custom-desk',1600,800)+
       button('add','Добавить','btn')+'</section></aside>'+
       '<section class="panel plan-visual"><div class="plan-toolbar"><div><h2>Вид сверху</h2><p id="floor-size" class="small"></p></div><div class="actions">'+
       button('undo','Отменить')+button('download','Скачать PNG')+button('clear','Очистить','btn subtle')+'</div></div>'+
       '<div class="floor-stage" id="room-preview"><div class="floor" aria-label="Схема помещения"></div></div>'+
       '<p class="small plan-instructions">Перетащите предмет. Для точного положения используйте поля ниже или клавиши со стрелками.</p>'+
-      '<p id="room-status" class="plan-status" role="status"></p>'+
+      '<p id="room-status" class="plan-status" role="status"></p><dl class="plan-metrics" id="plan-metrics" aria-label="Расчёт планировки"></dl>'+
       '<div id="plan-inspector"><label><span class="field-label">Предмет на плане</span><select class="field" id="plan-selected"></select></label>'+
       '<form id="plan-position" class="form-two">'+field('x','От левой стены, м',0,60,0,'0.001')+
       field('y','От верхней стены, м',0,60,0,'0.001')+'</form>'+
       '<form id="plan-obstacle-size" class="form-two" hidden>'+field('width','Ширина, м',0.1,3,0.9,'0.01')+
       field('depth','Глубина, м',0.1,3,0.9,'0.01')+'</form>'+
+      '<form id="plan-custom-size" class="form-two" hidden>'+field('width','Ширина стола, мм',300,4000,1600,'1')+
+      field('depth','Глубина стола, мм',300,4000,800,'1')+field('height','Высота стола, мм',400,1600,750,'1')+'</form>'+
       '<div class="actions">'+button('rotate','Повернуть на 90°')+button('copy','Дублировать')+button('delete','Удалить','btn subtle')+'</div></div>'+
       '<div class="plan-export"><p class="small" id="plan-quote-hint"></p><div class="actions">'+
       button('quote','Запросить смету','btn')+'<button class="btn secondary" type="button" id="plan-to-kit" data-plan-action="kit">Применить к комплекту Riva</button></div>'+
@@ -81,6 +96,7 @@ const officePlanner = (() => {
     const roomSize=find('#room-size');
     const presetForm=find('#plan-presets');
     const obstacleSize=find('#plan-obstacle-size');
+    const customSize=find('#plan-custom-size');
     const select=find('#plan-selected');
     const library=find('#plan-library-item');
     const action=name=>find('[data-plan-action="'+name+'"]');
@@ -109,7 +125,37 @@ const officePlanner = (() => {
       type=value;
       for (const entry of root.querySelectorAll('[data-plan-type]')) entry.setAttribute('aria-pressed',String(entry.dataset.planType===type));
       library.innerHTML=palette[type].map(item=>option(item.product,obstacles[type]?sizeLabel(item):item.label+' · '+sizeLabel(item))).join('');
+      if (type==='desk') library.add(new Option('Стол по своим размерам','0'));
+      find('#library-custom-desk').hidden=type!=='desk' || library.value!=='0';
       action('add').disabled=!palette[type].length || state.items.length>=workspace.maxItems;
+    }
+    function readCustom(section) {
+      const fields=[...section.querySelectorAll('input')];
+      if (!fields.every(field=>field.reportValidity())) return null;
+      return customDesk(...fields.map(field=>Number(field.value)/1000));
+    }
+    function syncPreset(updateDefaults=false) {
+      const {office,layout,gap,seats,desk}=presetForm.elements;
+      const isMeeting=office.value==='meeting';
+      const free=office.value==='free';
+      if (updateDefaults && !free) {
+        layout.value=office.value==='private'?'single':'double';
+        seats.value=office.value==='private'?'1':isMeeting?'6':String(requested);
+        if (isMeeting) {
+          desk.value='0';
+          presetForm.elements.deskWidth.value='2400';
+          presetForm.elements.deskDepth.value='1000';
+        } else desk.value=String(preset('desk',defaultDesk)?.product ?? 0);
+      }
+      find('#preset-furniture').hidden=free;
+      for (const field of [layout,gap]) {
+        field.closest('label').hidden=free || isMeeting;
+        field.disabled=free || isMeeting;
+      }
+      for (const field of [seats,desk]) field.disabled=free;
+      const isCustom=!free && desk.value==='0';
+      find('#preset-custom-desk').hidden=!isCustom;
+      for (const field of [presetForm.elements.deskWidth,presetForm.elements.deskDepth,presetForm.elements.deskHeight]) field.disabled=!isCustom;
     }
     function setGeometry(node,item,problems) {
       const size=sizeOf(item);
@@ -135,17 +181,31 @@ const officePlanner = (() => {
       const kit=valid && workspace.kitFor(state);
       action('quote').disabled=!valid;
       action('kit').disabled=!kit;
-      find('#plan-quote-hint').textContent=valid && !kit?'Для комплекта Riva выберите одинаковое число столов и кресел, по одной модели каждого типа. По этому плану можно запросить смету.':'';
+      const custom=state.items.some(item=>item.type==='desk' && !item.product);
+      find('#plan-quote-hint').textContent=valid && !kit ? (custom?'Столы по своим размерам можно передать в запрос сметы.':'Для комплекта Riva выберите одинаковое число столов и кресел, по одной модели каждого типа.') : '';
+      const area=state.width*state.depth;
+      find('#room-area').textContent='Площадь '+format.format(area)+' м²';
+      const taken=state.items.reduce((sum,item)=>sum+item.width*item.depth,0);
+      const priced=state.items.filter(item=>item.product && item.price!=null);
+      const total=priced.reduce((sum,item)=>sum+item.price,0);
+      const ask=custom || state.items.some(item=>item.product && item.price==null);
+      const labels = [
+        ['Свободная площадь',problems.size?'Уточните расстановку':format.format(Math.max(0,area-taken))+' м²'],
+        ['Места',state.office==='meeting'?chairs:desks],
+        ['Мебель по каталогу',priced.length?site.format(total)+(ask?' + по запросу':''):ask?'По запросу':'—']
+      ];
+      find('#plan-metrics').innerHTML=labels.map(([label,value])=>'<div><dt>'+escape(label)+'</dt><dd>'+escape(value)+'</dd></div>').join('');
     }
     function render() {
       const item=active();
       const problems=workspace.conflicts(state);
       const ratio=state.width/state.depth;
       floor.style.setProperty('--floor-ratio',ratio);
+      floor.style.width=Math.min(state.width*105,ratio*470)+'px';
       floor.style.maxWidth='min(100%, '+ratio*470+'px)';
       floor.style.setProperty('--grid-x',(0.5/state.width*100)+'%');
       floor.style.setProperty('--grid-y',(0.5/state.depth*100)+'%');
-      find('#floor-size').textContent=format.format(state.width)+' × '+format.format(state.depth)+' м · клетка 0,5 м';
+      find('#floor-size').textContent=offices[state.office]+' · '+format.format(state.width)+' × '+format.format(state.depth)+' м · клетка 0,5 м';
       floor.innerHTML=state.items.map(element=>'<button type="button" class="plan-object '+element.type+'" data-piece="'+element.id+
         '" tabindex="'+(element.id===(selected || state.items[0]?.id)?0:-1)+'" aria-label="'+escape(showLabel(element))+'" aria-pressed="'+(selected===element.id)+
         '" title="'+escape(showLabel(element))+'"><span>'+element.id+'</span></button>').join('');
@@ -158,6 +218,8 @@ const officePlanner = (() => {
       }
       obstacleSize.hidden=!item || !obstacles[item.type];
       if (!obstacleSize.hidden) for (const name of ['width','depth']) obstacleSize.elements[name].value=item[name];
+      customSize.hidden=!item || item.type!=='desk' || Boolean(item.product);
+      if (!customSize.hidden) for (const name of ['width','depth','height']) customSize.elements[name].value=Math.round(item[name]*1000);
       for (const name of ['rotate','copy','delete']) action(name).disabled=!item || (name==='copy' && state.items.length>=workspace.maxItems);
       action('add').disabled=!palette[type].length || state.items.length>=workspace.maxItems;
       action('undo').disabled=!undo.length;
@@ -197,7 +259,7 @@ const officePlanner = (() => {
     function invoke(name) {
       const item=active();
       if (name==='add') {
-        const model=preset(type,Number(library.value));
+        const model=type==='desk' && library.value==='0' ? readCustom(find('#library-custom-desk')) : preset(type,Number(library.value));
         if (model) place({...model,rotation:0});
       }
       if (name==='copy' && item) place(item);
@@ -211,6 +273,8 @@ const officePlanner = (() => {
         selected=active()?.id || state.items[0]?.id;
         for (const key of ['width','depth']) roomSize.elements[key].value=state[key];
         for (const key of ['layout','gap']) presetForm.elements[key].value=state[key];
+        presetForm.elements.office.value=state.office;
+        syncPreset();
         save();
         render();
       }
@@ -233,8 +297,10 @@ const officePlanner = (() => {
       if (event.target!==presetForm) return;
       if (!roomSize.reportValidity()) return;
       const values=presetForm.elements;
-      const next={...state,layout:values.layout.value,gap:Number(values.gap.value)};
-      const result=workspace.arrange(Number(values.seats.value),preset('desk',Number(values.desk.value)),chair,next);
+      const next={...state,office:values.office.value,layout:values.layout.value,gap:Number(values.gap.value)};
+      const free=next.office==='free';
+      const model=!free && values.desk.value==='0' ? readCustom(find('#preset-custom-desk')) : preset('desk',Number(values.desk.value));
+      const result=free?{items:[]}:workspace.arrange(Number(values.seats.value),model,chair,next);
       if (!result?.items) {
         message=result?fitMessage(result):'Выберите модель стола и число мест.';
         status(workspace.conflicts(state));
@@ -243,32 +309,57 @@ const officePlanner = (() => {
       const furniture=result.items.map(item=>({...item,id:++serial}));
       const items=[...state.items.filter(item=>obstacles[item.type]),...furniture];
       if (items.length>workspace.maxItems) return;
-      update({...next,items},furniture[0].id);
+      update({...next,items},items[0]?.id);
     },events);
 
+    function resizeRoom(input,finished) {
+      if (!roomSize.checkValidity()) {
+        if (finished) {
+          input.value=state[input.name];
+          message='Укажите размеры комнаты от 2 до 60 м с точностью до сантиметра.';
+          status(workspace.conflicts(state));
+        }
+        return;
+      }
+      const width=Number(roomSize.elements.width.value);
+      const depth=Number(roomSize.elements.depth.value);
+      if (state.width===width && state.depth===depth) return;
+      const room={...state,width,depth};
+      const oversized=state.items.some(item=>{
+        const size=sizeOf(item);
+        return size.width>room.width+.001 || size.depth>room.depth+.001;
+      });
+      if (oversized) {
+        if (finished) input.value=state[input.name];
+        message='При этих размерах один из предметов не помещается. Поверните или удалите его.';
+        status(workspace.conflicts(state));
+        return;
+      }
+      roomEdit ||= {original:snapshot(),remembered:false};
+      if (!roomEdit.remembered) {
+        remember(roomEdit.original);
+        roomEdit.remembered=true;
+      }
+      state={...room,items:roomEdit.original.items.map(item=>bounded(item,room))};
+      message='';
+      save();
+      render();
+    }
+    roomSize.addEventListener('focusin',()=>{roomEdit={original:snapshot(),remembered:false};},events);
+    roomSize.addEventListener('input',event=>resizeRoom(event.target,false),events);
+    roomSize.addEventListener('focusout',()=>{roomEdit=null;},events);
     root.addEventListener('change',event=>{
       const input=event.target;
       if (input===select) {selected=Number(select.value)||null;render();}
-      if (input.form===roomSize) {
-        if (!roomSize.checkValidity()) {
-          input.value=state[input.name];
-          message='Укажите ширину и глубину помещения от 2 до 60 м.';
-          status(workspace.conflicts(state));
-          return;
-        }
-        const room={...state,width:Number(roomSize.elements.width.value),depth:Number(roomSize.elements.depth.value)};
-        const oversized=state.items.some(item=>{
-          const size=sizeOf(item);
-          return size.width>room.width+.001 || size.depth>room.depth+.001;
-        });
-        if (oversized) {
-          input.value=state[input.name];
-          message='С такими размерами часть мебели не поместится. Сначала передвиньте, поверните или удалите предмет.';
-          status(workspace.conflicts(state));
-        } else update({...room,items:state.items.map(item=>bounded(item,room))});
-      }
+      if (input.form===roomSize) resizeRoom(input,true);
+      if (input===library) find('#library-custom-desk').hidden=type!=='desk' || library.value!=='0';
+      if (input===presetForm.elements.office || input===presetForm.elements.desk) syncPreset(input===presetForm.elements.office);
       const item=active();
       if (item && input.form===obstacleSize && obstacleSize.checkValidity()) replace({...item,[input.name]:Number(input.value)});
+      if (item && input.form===customSize && customSize.checkValidity()) {
+        const sizes=['width','depth','height'].map(name=>Number(customSize.elements[name].value)/1000);
+        replace({...item,...customDesk(...sizes)});
+      }
       if (item && input.form===position && input.checkValidity()) replace({...item,[input.name]:Number(input.value)});
     },events);
     root.addEventListener('click',event=>{
@@ -333,6 +424,7 @@ const officePlanner = (() => {
     floor.addEventListener('pointerup',finishDrag,events);
     floor.addEventListener('pointercancel',finishDrag,events);
     setType(type);
+    syncPreset();
     render();
     save();
     return ()=>controller.abort();
