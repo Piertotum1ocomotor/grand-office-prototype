@@ -370,9 +370,9 @@ function catalogPage(settings, preview, unavailable) {
     ? '<div class="catalog-subsections"><span>Подразделы</span>'+children.map(entry=>'<a class="text-link" href="'+e(toCatalog(categoryPatch(entry)))+'">'+e(entry.name)+'</a>').join('')+'</div>' : '';
   return page(title,'<div class="catalog-shell"><aside class="catalog-sidebar" aria-label="Фильтры и разделы">'+
     '<details class="catalog-filters" '+(desktop?'open':'')+'><summary>Фильтры'+(filterCount?' <span>'+filterCount+'</span>':'')+'</summary><form id="filters" class="filters-grid">'+
-    filters+'<button class="btn" type="submit">Применить</button>'+
+    filters+'<div class="filter-actions"><button class="btn" type="submit">Применить</button>'+
     (filterCount?'<a class="text-link reset-filters" href="'+e(cleared)+'">Очистить фильтры</a>':'')+
-    '</form></details><details class="catalog-directory" '+(desktop || selected?'open':'')+'><summary>Разделы каталога</summary><nav aria-label="Разделы каталога">'+
+    '</div></form></details><details class="catalog-directory" '+(desktop || selected?'open':'')+'><summary>Разделы каталога</summary><nav aria-label="Разделы каталога">'+
     categoryItems(catChildren.get(0) || [],selected,settings)+'</nav></details></aside><div class="catalog-results"><div class="catalog-tools">'+
     (selected?.partsOnly?'<p class="catalog-notice">В этом разделе собраны отдельные модули и комплектующие. <a class="text-link" href="#/catalog'+
       (/шкаф/i.test(selected.name)?'?t=cabinets">Посмотреть готовые шкафы':'">Посмотреть готовую мебель')+'</a></p>':'')+sections+

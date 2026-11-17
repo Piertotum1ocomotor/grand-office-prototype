@@ -530,6 +530,8 @@ select.field[multiple],select.field[size]:not([size="1"]){appearance:auto;backgr
 .catalog-sidebar .unknown-width input{margin-top:3px;accent-color:var(--brand)}
 .catalog-sidebar .unknown-width:has(input:disabled){display:none}
 .catalog-sidebar .reset-filters{justify-self:center;font-size:14px}
+.filter-actions{display:grid;gap:6px;background:var(--paper);border-top:1px solid var(--line);padding-block:9px 4px}
+@media(min-width:961px){.filter-actions{position:sticky;bottom:0;z-index:1}}
 .catalog-sidebar .catalog-directory nav{max-height:385px}
 .catalog-sidebar nav details>summary{font-size:14px}
 .catalog-sidebar nav a{font-size:14px}
