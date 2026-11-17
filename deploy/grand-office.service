@@ -1,0 +1,17 @@
+[Unit]
+Description=Grand Office storefront and office application
+After=network.target
+
+[Service]
+Type=simple
+User=grand-office
+WorkingDirectory=/srv/grand-office/current
+EnvironmentFile=/etc/grand-office.env
+StateDirectory=grand-office
+StateDirectoryMode=0700
+UMask=0077
+ExecStart=/usr/bin/python3 -B /srv/grand-office/current/server/main.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

@@ -5,8 +5,10 @@ import csv
 from contextlib import contextmanager
 from datetime import date, datetime, timezone, timedelta
 from functools import lru_cache
+import gzip
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import io
+from ipaddress import ip_address
 import json
 import mimetypes
 import os
@@ -21,12 +23,27 @@ from urllib.parse import urlsplit, parse_qs
 from urllib.request import Request, HTTPRedirectHandler, HTTPSHandler, build_opener
 import xml.etree.ElementTree as ET
 
+from routing import NotFound, PAGES, PROJECTS, Routes
+from seo import document
+
 ROOT = Path(__file__).resolve().parents[1]
 DB = Path(os.environ.get('GRAND_DB', ROOT / 'data-private/store.sqlite3'))
 ADMIN_USER = os.environ.get('GRAND_ADMIN_USER', 'office')
 ADMIN_PASSWORD = os.environ.get('GRAND_ADMIN_PASSWORD', '')
 EXPRO_URL = os.environ.get('GRAND_EXPRO_URL', '')
-SOURCE_STORE = 'https://grand-office59.ru'
+ORIGINAL_STORE = 'https://grand-office59.ru'
+
+def configured_origin(name, default=''):
+    value = os.environ.get(name,default).rstrip('/')
+    parsed = urlsplit(value)
+    if value and (parsed.scheme!='https' or not parsed.hostname or parsed.username or parsed.password or parsed.path or parsed.query or parsed.fragment):
+        raise ValueError(f'{name} должен содержать HTTPS-адрес без пути.')
+    return value
+
+SOURCE_STORE = configured_origin('GRAND_LEGACY_ORIGIN', ORIGINAL_STORE)
+PUBLIC_ORIGIN = configured_origin('GRAND_PUBLIC_ORIGIN')
+INDEXABLE = bool(PUBLIC_ORIGIN) and os.environ.get('GRAND_INDEXABLE') == '1'
+USE_PROXY_ADDRESS = os.environ.get('GRAND_TRUST_PROXY') == '1'
 recent_variants = {}
 variant_lock = Lock()
 MAX_FILE = 8 * 1024 * 1024
@@ -96,6 +113,22 @@ def catalog():
     raw = json.loads((ROOT / 'data/catalog.json').read_text(encoding='utf-8'))
     return raw, {row[0]: row for row in raw['items']}
 
+@lru_cache(maxsize=1)
+def routes():
+    unlisted = json.loads((ROOT/'data/indexing.json').read_text(encoding='utf-8'))['unlistedProducts']
+    return Routes(catalog()[0],unlisted)
+
+@lru_cache(maxsize=1)
+def storefront_template():
+    return (ROOT/'index.html').read_text(encoding='utf-8')
+
+@lru_cache(maxsize=1)
+def sitemap():
+    root = ET.Element('urlset',xmlns='http://www.sitemaps.org/schemas/sitemap/0.9')
+    for path in routes().sitemap_paths():
+        ET.SubElement(ET.SubElement(root,'url'),'loc').text = PUBLIC_ORIGIN+path
+    return ET.tostring(root,encoding='utf-8',xml_declaration=True)
+
 @lru_cache(maxsize=40)
 def shard(key):
     path = ROOT / 'data/products' / f'{key}.json'
@@ -126,11 +159,15 @@ def combined(manual, supplier):
     price = manual['price'] if manual is not None and manual['price'] is not None else supplier['price'] if supplier is not None else None
     return price, active_stock(manual if manual is not None and manual['stock'] is not None else supplier)
 
-def public_catalog():
-    raw, _ = catalog()
+def catalog_overrides():
     with database() as db:
         prices = price_map(db,'supplier_values') | price_map(db,'edits')
         names = {r['product']:r['name'] for r in db.execute('SELECT product,name FROM product_content WHERE name IS NOT NULL')}
+    return prices,names
+
+def public_catalog():
+    raw, _ = catalog()
+    prices,names = catalog_overrides()
     return {'categories':raw['categories'], 'items':[
       [original[0],names.get(original[0],original[1]),original[2],prices.get(original[0],original[3]),None if original[0] in prices else original[4],*original[5:]]
       if original[0] in prices or original[0] in names else original for original in raw['items']
@@ -235,7 +272,7 @@ def source_variant(product,variant):
         price = int(pricing.get('price') or 0) / 10**int(pricing.get('currency_minor_unit',0)) if pricing.get('currency_code')=='RUB' else None
         images = data.get('images') or []
         image = images[0].get('src') if images and isinstance(images[0],dict) else ''
-        if not isinstance(image,str) or not image.startswith(SOURCE_STORE+'/wp-content/uploads/'):
+        if not isinstance(image,str) or not image.startswith((ORIGINAL_STORE+'/wp-content/uploads/',SOURCE_STORE+'/wp-content/uploads/')):
             image = ''
         payload = {'price':price if price and price>0 else None,'image':image,'backorder':data.get('is_on_backorder') is True}
     except (OSError,ValueError,TypeError,AttributeError):
@@ -353,11 +390,10 @@ def project_request(db,data):
     if data.get('topic') == 'delivery':
         payload['topic'] = 'delivery'
     if data.get('caseId'):
-        examples = {'sber':'Сбер','rshb':'Россельхозбанк','lukoil':'ЛУКОЙЛ','gazprom':'Газпром'}
         case_id = text(data,'caseId',40)
-        if case_id not in examples:
+        if case_id not in PROJECTS:
             raise Problem('Выберите проект из портфолио.')
-        payload.update(caseId=case_id,example=examples[case_id])
+        payload.update(caseId=case_id,example=PROJECTS[case_id])
     if data.get('productId'):
         identifier = integer(data['productId'],1,999_999_999)
         row = record(identifier)
@@ -532,13 +568,21 @@ def import_feed(data):
 class SiteServer(BaseHTTPRequestHandler):
     def response(self,status,data,kind='application/json; charset=utf-8',extra=None):
         body = json.dumps(data,ensure_ascii=False).encode('utf-8') if kind.startswith('application/json') else data
+        headers = dict(extra or {})
+        if len(body) >= 8192 and kind.startswith(('application/json','text/','application/xml')):
+            headers['Vary'] = 'Accept-Encoding'
+            permits_gzip = any(re.fullmatch(r'gzip(?:;\s*q=(?:1(?:\.0+)?|0?\.\d*[1-9]\d*))?',coding.strip(),re.I)
+                               for coding in self.headers.get('Accept-Encoding','').split(','))
+            if permits_gzip:
+                body = gzip.compress(body,compresslevel=5,mtime=0)
+                headers['Content-Encoding'] = 'gzip'
         self.send_response(status)
         self.send_header('Content-Type',kind)
         self.send_header('Content-Length',str(len(body)))
         self.send_header('X-Content-Type-Options','nosniff')
         if self.path.startswith(('/api/','/office')):
             self.send_header('Cache-Control','no-store')
-        for name,value in (extra or {}).items():
+        for name,value in headers.items():
             self.send_header(name,value)
         self.end_headers()
         if self.command!='HEAD':
@@ -560,9 +604,16 @@ class SiteServer(BaseHTTPRequestHandler):
 
     def route_get(self,path,args):
         if path=='/site.json':
-            return self.response(200,{**site_config(),'backend':True})
+            return self.response(200,{**site_config(),'backend':True,'paths':{key:value[0] for key,value in PAGES.items()},
+                                      'sameStoreDomain':PUBLIC_ORIGIN==ORIGINAL_STORE},extra={'Cache-Control':'no-cache'})
         if path=='/api/health':
             return self.response(200,{'ok':True})
+        if path=='/robots.txt':
+            rules = ('User-agent: *\nDisallow: /office/\nDisallow: /api/\nSitemap: '+PUBLIC_ORIGIN+'/sitemap.xml\n'
+                     if INDEXABLE else 'User-agent: *\nDisallow: /\n')
+            return self.response(200,rules.encode(),'text/plain; charset=utf-8')
+        if path=='/sitemap.xml' and INDEXABLE:
+            return self.response(200,sitemap(),'application/xml; charset=utf-8')
         if path=='/api/catalog':
             return self.response(200,public_catalog())
         if match := re.fullmatch(r'/api/variants/(\d+)/(\d+)',path):
@@ -599,11 +650,29 @@ class SiteServer(BaseHTTPRequestHandler):
             raise Problem('Страница не найдена.',404)
         resource=path.strip('/')
         allowed = resource in FILES or re.fullmatch(r'assets/[A-Za-z0-9_.-]+|data/(?:catalog|featured)\.json|data/products/[0-9]+\.json',resource)
-        if path=='/':
-            return self.static(ROOT/'index.html')
-        if allowed:
+        if allowed and resource!='index.html':
             return self.static(ROOT/resource)
-        raise Problem('Страница не найдена.',404)
+        if path.startswith('/api/'):
+            raise Problem('Страница не найдена.',404)
+        try:
+            page = routes().resolve(path,args)
+        except NotFound:
+            return self.response(404,document(storefront_template(),routes(),None,PUBLIC_ORIGIN,False),'text/html; charset=utf-8')
+        if page.location()!=self.path:
+            return self.response(301,b'','text/plain; charset=utf-8',{'Location':page.location()})
+        details = public_detail(page.ident) if page.key=='product' else None
+        prices,names = catalog_overrides() if page.key=='catalog' else ({},{})
+        return self.response(200,document(storefront_template(),routes(),page,PUBLIC_ORIGIN,INDEXABLE and page.can_index(),details,prices,names),
+                             'text/html; charset=utf-8',{'Cache-Control':'no-cache'})
+
+    def request_address(self):
+        source = self.client_address[0]
+        if USE_PROXY_ADDRESS and ip_address(source).is_loopback:
+            try:
+                return str(ip_address(self.headers.get('X-Real-IP','')))
+            except ValueError:
+                pass
+        return source
 
     def do_GET(self):
         parsed=urlsplit(self.path)
@@ -628,7 +697,9 @@ class SiteServer(BaseHTTPRequestHandler):
             if not isinstance(data,dict):
                 raise Problem('Неподдерживаемый формат.')
             if path=='/api/requests':
-                return self.response(201,create_request(data,self.client_address[0]))
+                if INDEXABLE and len(ADMIN_PASSWORD)<16:
+                    raise Problem('Приём заявок временно недоступен. Свяжитесь с нами по телефону.',503)
+                return self.response(201,create_request(data,self.request_address()))
             if path=='/api/office/products':
                 return self.response(200,change_product(data))
             if path=='/api/office/links':

@@ -2,6 +2,7 @@
 
 const { escape: e, normalize, money, format } = site;
 const main = document.querySelector('#main');
+const pathRouting = document.documentElement.hasAttribute('data-route');
 let catalog;
 let catalogItems;
 let officeConfig = {};
@@ -13,8 +14,9 @@ if (!Array.isArray(cart)) cart = [];
 let revision = 0;
 const pageSize = 24;
 const catalogPagesPerFile = 8;
+const smallCatalogBucket = 32;
 const positions = new Map();
-let previousRoute = location.hash;
+let previousRoute = currentRoute();
 let catalogOrigin = '#/catalog';
 
 const fromProduct = ([id, name, sku, price, max, image, categories, stock, backorder, url, type, dimensions, kind]) => (
@@ -173,8 +175,8 @@ function categoryItems(entries, selected, settings) {
   function link(entry,title=entry.name) {
     return '<a href="'+e(catalogLink(settings,{c:entry.slug || entry.id,p:null}))+'" '+(entry.id===selected?.id?'aria-current="page"':'')+'>'+e(title)+'</a>';
   }
-  return entries.map(entry=>{
-    const children = catChildren.get(entry.id);
+  return entries.filter(entry=>!entry.empty || path.has(entry.id)).map(entry=>{
+    const children = (catChildren.get(entry.id) || []).filter(child=>!child.empty || path.has(child.id));
     if (!children?.length) return link(entry);
     const open = path.has(entry.id);
     return '<details data-category="'+entry.id+'" '+(open?'open':'')+'><summary>'+e(entry.name)+'</summary><div>'+
@@ -261,7 +263,7 @@ function catalogPage(settings, preview, unavailable) {
       (offset===number?'<span aria-current="page">'+number+'</span>':'<a href="'+e(toCatalog({p:number}))+'" aria-label="Страница '+number+'">'+number+'</a>')).join('')+'</div>'+
     (offset<totalPages?'<a class="btn secondary" href="'+e(toCatalog({p:offset+1}))+'">Далее</a>':'')+
     (totalPages>5?'<form id="catalog-jump"><label>Страница <input class="field" type="number" name="p" min="1" max="'+totalPages+'" value="'+offset+'" required></label><button type="submit" class="btn secondary">Перейти</button></form>':'')+'</nav>' : '';
-  const children = selected ? catChildren.get(selected.id) || [] : [];
+  const children = selected ? (catChildren.get(selected.id) || []).filter(child=>!child.empty) : [];
   const sections = children.length>0 && children.length<=12
     ? '<div class="catalog-subsections"><span>Подразделы</span>'+children.map(entry=>'<a class="text-link" href="'+e(toCatalog({c:entry.slug || entry.id,p:null}))+'">'+e(entry.name)+'</a>').join('')+'</div>' : '';
   return page(title,'<div class="catalog-shell"><aside class="catalog-sidebar"><details class="catalog-directory" '+
@@ -324,7 +326,7 @@ function itemPage(item, detail, variant) {
       <div class="logistics"><p class="stock">${liveStock>0 ? 'Доступно у поставщика: '+liveStock+' шт.' : ((variant?.backorder ?? item.backorder)?'Под заказ':'Наличие уточняется')}</p><p class="small">${e(logistics(item))}</p></div>
       <p class="small"><a class="text-link" href="#/delivery?${context}">Рассчитать доставку этого товара</a></p>
       ${warranty?'<p class="small">Гарантия · '+e(warranty)+'</p>':''}
-      ${item.url?'<p class="small source-link"><a class="text-link" href="'+e(item.url)+'">Карточка в действующем магазине</a></p>':''}</section></div>
+      ${item.url && !officeConfig.sameStoreDomain?'<p class="small source-link"><a class="text-link" href="'+e(item.url)+'">Карточка в действующем магазине</a></p>':''}</section></div>
       ${description?'<section class="spec"><h2>О товаре</h2><p>'+e(description)+'</p></section>':''}
       ${dimensions? '<section class="spec"><h2>Габариты</h2><p>'+e(dimensions)+'</p></section>' : ''}
       ${specs.length?'<section class="spec"><h2>Характеристики</h2><dl>'+specs.map(([a,b])=>'<div><dt>'+e(a)+'</dt><dd>'+e(b)+'</dd></div>').join('')+'</dl>'+(detail?.[7]?'<p><a class="text-link" href="'+e(detail[7])+'">Спецификация модели у поставщика</a></p>':'')+'</section>':''}
@@ -517,6 +519,7 @@ function updateEstimate() {
   check.textContent = 'Проверить наличие на ' + seatsLabel(qty);
   document.querySelector('[data-save-spec]').disabled = !quote.ready;
   document.querySelector('#planner-link').href = '#/projects/workspace-layout?seats=' + qty;
+  prepareLinks(document.querySelector('#kit-builder'));
   const usesKit = form.elements.kit.value === officeConfig.workspaceKit?.id;
   if (form.elements.seats) form.elements.seats.required = usesKit;
   document.querySelector('#quote-kit').textContent = usesKit
@@ -687,12 +690,65 @@ function infoPage(key,id) {
   return page('Страница не найдена','<p class="intro"><a class="text-link" href="#/">Вернуться на главную</a></p>');
 }
 
-function getRoute() {
-  const [route, args] = location.hash.replace(/^#\/?/,'').split('?');
+function currentRoute() {
+  if (location.hash.startsWith('#/')) return location.hash;
+  return pathRouting ? history.state?.grandRoute || document.documentElement.dataset.route : location.hash;
+}
+
+function getRoute(address = currentRoute()) {
+  const [route, args] = address.replace(/^#\/?/,'').split('?');
   const [key,id] = route.split('/');
   return {key,id,args:new URLSearchParams(args)};
 }
 
+function hrefFor(address) {
+  const {key,id,args} = getRoute(address);
+  let path = officeConfig.paths?.[key];
+  if (key==='product') {
+    const item = productById.get(Number(id)) || catalogueById.get(Number(id));
+    path = item?.url ? new URL(item.url,site.original).pathname : '/product/'+id+'/';
+  }
+  if (key==='projects' && id) path += id+'/';
+  if (key==='catalog') {
+    if (args.get('p')==='1') args.delete('p');
+    const category = args.get('c');
+    if (Object.hasOwn(productTypes,category)) {
+      if (!args.has('t')) args.set('t',category);
+      args.delete('c');
+    } else if (category) {
+      const chosen=selectedCategory(category);
+      if (chosen) {
+        const levels=[];
+        for (let entry=chosen; entry?.slug && levels.length<12; entry=catById.get(entry.parent)) levels.unshift(encodeURIComponent(entry.slug));
+        path=chosen.path || '/product-category/'+levels.join('/')+'/';
+      } else if (site.startCategories.some(([, , slug])=>slug===category)) {
+        path='/product-category/'+encodeURIComponent(category)+'/';
+      } else {
+        path='/catalog/'+encodeURIComponent(category)+'/';
+      }
+      args.delete('c');
+    }
+  }
+  return path ? path + (args.size ? '?'+args : '') : address;
+}
+
+function prepareLinks(container) {
+  if (!pathRouting) return;
+  for (const anchor of container.querySelectorAll('a[href^="#/"]')) {
+    const route=anchor.getAttribute('href');
+    anchor.dataset.route=route;
+    anchor.href=hrefFor(route);
+  }
+}
+
+function navigate(address) {
+  if (!pathRouting) {location.hash=address;return;}
+  if (address === currentRoute()) return;
+  history.pushState({grandRoute:address},'',hrefFor(address));
+  onRouteChange();
+}
+
+const catalogueById = new Map();
 const loadConfig=site.config.then(config=>{officeConfig=config;});
 const catalogPageNumber = (settings,total) => Math.min(total,Math.max(1,parseInt(settings.get('p') || '1',10) || 1));
 async function loadCatalog(settings) {
@@ -701,7 +757,10 @@ async function loadCatalog(settings) {
     if (raw && !catalog) {
       catalog=raw;
       prepareCategories(raw.categories);
-      if (hasBackend) catalogItems=raw.items.map(fromProduct);
+      if (hasBackend) {
+        catalogItems=raw.items.map(fromProduct);
+        for (const item of catalogItems) catalogueById.set(item.id,item);
+      }
     }
   }
   if (!catalog || hasBackend) return null;
@@ -719,6 +778,14 @@ async function loadCatalog(settings) {
       const rows=await site.browse('pages/'+scope+'-'+block);
       const start=index%catalogPagesPerFile*pageSize;
       return {count,rows:rows.slice(start,start+pageSize)};
+    } catch {}
+  } else if (!filtered && chosen && !kind) {
+    if (chosen.empty) return {count:0,rows:[]};
+    try {
+      const chunk=await site.browse('small/'+Math.floor(chosen.id/smallCatalogBucket));
+      const rows=chunk[chosen.id];
+      const number=catalogPageNumber(settings,Math.max(1,Math.ceil(rows.length/pageSize)));
+      return {count:rows.length,rows:rows.slice((number-1)*pageSize,number*pageSize)};
     } catch {}
   }
   catalogItems ??= (await site.browse('index')).map(fromBrowse);
@@ -756,7 +823,7 @@ async function render(move = false) {
   const search = document.querySelector('#search-input');
   if (key==='catalog') {
     search.value=args.get('q') || '';
-    if (!catalog) main.innerHTML = '<p class="shell page" role="status">Загрузка каталога…</p>';
+    if (!catalog && !main.querySelector('h1')) main.innerHTML = '<p class="shell page" role="status">Загрузка каталога…</p>';
     catalogOptions=catalogSettings(args);
     try { preview=await loadCatalog(catalogOptions); } catch { catalogError=true; }
   } else if (key==='project' || id==='workspace-layout') {
@@ -774,7 +841,7 @@ async function render(move = false) {
   if (current!==revision) return;
   if (target) quoteOption=details?.[2]?.find(option=>option[0]===Number(args.get('variant')));
   if (!key || key==='main') main.innerHTML=home();
-  else if (key==='catalog') {catalogOrigin=location.hash;main.innerHTML=catalogPage(catalogOptions,preview,catalogError || !catalog);}
+  else if (key==='catalog') {catalogOrigin=currentRoute();main.innerHTML=catalogPage(catalogOptions,preview,catalogError || !catalog);}
   else if (key==='project') {
     main.innerHTML=projectPage(productById.get(target),quoteOption,example,validSeats(args.get('seats')) || 4,useKit);
     if (!useKit) document.querySelector('#kit-builder').before(document.querySelector('#request-form'));
@@ -797,7 +864,19 @@ async function render(move = false) {
     form?.scrollIntoView({block:'start'});
   } else if (move) {
     main.focus({preventScroll:true});
-    window.scrollTo(0,positions.get(location.hash) || 0);
+    window.scrollTo(0,positions.get(currentRoute()) || 0);
+  }
+  prepareLinks(main);
+  if (pathRouting) {
+    document.querySelector('.skip').href=location.pathname+location.search+'#main';
+    const canonical=document.querySelector('link[rel="canonical"]');
+    if (canonical && key!=='missing') {
+      const address=new URL(hrefFor(currentRoute()),canonical.href);
+      const number=Number(address.searchParams.get('p'));
+      const paged=key==='catalog' && number>1 && [...address.searchParams.keys()].every(param=>param==='p');
+      address.search=paged?'?p='+number:'';
+      canonical.href=address.href;
+    }
   }
   main.querySelectorAll('.project-track').forEach(syncCarousel);
   const heading = main.querySelector('h1')?.textContent;
@@ -847,6 +926,7 @@ main.addEventListener('toggle',event=>{
   const settings=catalogSettings(getRoute().args);
   const children=catChildren.get(Number(branch.dataset.category)) || [];
   body.insertAdjacentHTML('beforeend',categoryItems(children,selectedCategory(settings.get('c')),settings));
+  prepareLinks(body);
 },true);
 window.addEventListener('resize',()=>main.querySelectorAll('.project-track').forEach(syncCarousel));
 
@@ -860,7 +940,7 @@ main.addEventListener('click', async (event)=>{
     kitPreferences.desk = {id:Number(apply.dataset.planDesk)};
     kitPreferences.plan = {...roomDraft};
     site.save('kit-preferences',kitPreferences);
-    location.hash='#/project?section=kit&seats='+apply.dataset.planSeats;
+    navigate('#/project?section=kit&seats='+apply.dataset.planSeats);
     return;
   }
   const control=event.target.closest('button');
@@ -910,12 +990,16 @@ main.addEventListener('click', async (event)=>{
   else cart.push({key,id:item.id,choice,variant:option?.[1],name:item.name,sku:item.sku,image:variation?.image || item.image,price:priceOf(item,option,variation),qty:1,cap});
   saveCart();
   const result=main.querySelector('#cart-result');
-  if (result) { result.hidden=false;result.innerHTML='Товар добавлен. <a class="text-link" href="#/cart">Открыть корзину</a>'; }
+  if (result) {
+    result.hidden=false;
+    result.innerHTML='Товар добавлен. <a class="text-link" href="#/cart">Открыть корзину</a>';
+    prepareLinks(result);
+  }
 });
 main.addEventListener('change',event=>{
   const element=event.target;
   if (element.id==='catalog-sort') {
-    location.hash=catalogLink(catalogSettings(getRoute().args),{sort:element.value,p:null});
+    navigate(catalogLink(catalogSettings(getRoute().args),{sort:element.value,p:null}));
   }
   if (element.id==='set-count') {
     const form = document.querySelector('#request-form');
@@ -995,11 +1079,11 @@ main.addEventListener('submit',async(event)=>{
     for (const [key,value] of new FormData(form)) patch[key]=String(value).trim();
     if (!Number(patch.max)) patch.max=null;
     if (!Number(patch.w)) {patch.w=null;patch.unknown=null;}
-    location.hash=catalogLink(catalogSettings(getRoute().args),patch);
+    navigate(catalogLink(catalogSettings(getRoute().args),patch));
     return;
   }
   if (form.id==='catalog-jump') {
-    location.hash=catalogLink(catalogSettings(getRoute().args),{p:form.elements.p.value});
+    navigate(catalogLink(catalogSettings(getRoute().args),{p:form.elements.p.value}));
     return;
   }
   if (form.id!=='request-form') return;
@@ -1047,7 +1131,7 @@ main.addEventListener('submit',async(event)=>{
 
 document.querySelector('#global-search').addEventListener('submit',(event)=>{
   event.preventDefault(); const value=document.querySelector('#search-input').value.trim();
-  location.hash='#/catalog'+(value?'?q='+encodeURIComponent(value):'');
+  navigate('#/catalog'+(value?'?q='+encodeURIComponent(value):''));
 });
 const dialog=document.querySelector('#city-dialog');
 const cityInput=document.querySelector('#city-input');
@@ -1064,9 +1148,20 @@ dialog.addEventListener('close',()=>{
 document.querySelector('#city-name').textContent=city;
 saveCart();
 site.backend.then(value=>{hasBackend=value;return render();});
-window.addEventListener('hashchange',()=>{
-  if (location.hash==='#main') return;
+function onRouteChange() {
+  const address=currentRoute();
+  if (address===previousRoute || !pathRouting && address==='#main') return;
   positions.set(previousRoute,window.scrollY);
-  previousRoute=location.hash;
+  previousRoute=address;
   render(true);
-});
+}
+window.addEventListener('hashchange',onRouteChange);
+if (pathRouting) {
+  window.addEventListener('popstate',onRouteChange);
+  document.addEventListener('click',event=>{
+    const anchor=event.target.closest('a[data-route]');
+    if (!anchor || event.defaultPrevented || event.button!==0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    navigate(anchor.dataset.route);
+  });
+}

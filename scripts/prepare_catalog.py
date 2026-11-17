@@ -1,9 +1,34 @@
+import argparse
+from html import unescape
 import json,re
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 root=Path(__file__).resolve().parents[1]/'data'
 main=root/'catalog.json'
 data=json.loads(main.read_text())
 categories={row['id']:row for row in data['categories']}
+parser=argparse.ArgumentParser()
+parser.add_argument('--categories',type=Path,help='Directory of JSON pages from the public product_cat API')
+args=parser.parse_args()
+if args.categories:
+ sources=[row for page in sorted(args.categories.glob('*.json')) for row in json.loads(page.read_text())]
+ if not sources:
+  parser.error('no categories found')
+ for row in sources:
+  category={'id':row['id'],'name':unescape(row['name']),'parent':row['parent'],'slug':row['slug']}
+  path=urlsplit(row['link']).path
+  if path.startswith('/product-category/'):
+   category['path']=path
+  categories[row['id']]=category
+ data['categories']=list(categories.values())
+ for category in categories.values():
+  item=category
+  slugs=[]
+  while item and item.get('slug') and len(slugs)<12:
+   slugs.insert(0,unquote(item['slug']))
+   item=categories.get(item['parent'])
+  if unquote(category.get('path',''))=='/product-category/'+'/'.join(slugs)+'/':
+   category.pop('path',None)
 shardfiles={}
 types={
  'tables':r'\bстол(?:ы|а|ов|ик(?:и)?)?\b',
@@ -88,8 +113,11 @@ output=root/'browse'
 output.mkdir(exist_ok=True)
 pages_output=output/'pages'
 pages_output.mkdir(exist_ok=True)
+small_output=output/'small'
+small_output.mkdir(exist_ok=True)
 page_size=24
 pages_per_file=8
+small_bucket_size=32
 rows=list(map(browse_row,data['items']))
 priority=[887,244689,86,986,176,197,204,1046,211,2609,188286,157457]
 order={value:index for index,value in enumerate(priority)}
@@ -111,11 +139,17 @@ for identifier,items in by_category.items():
  if not categories[identifier]['parent'] or len(items)>=150:
   scopes[str(identifier)]=items
  categories[identifier].pop('partsOnly',None)
+ categories[identifier].pop('empty',None)
+ if not items:
+  categories[identifier]['empty']=True
  if items and not any(row[10]=='furniture' for row in items):
   categories[identifier]['partsOnly']=True
 expected=set()
+def display_row(row):
+ return row[:6]+[[],*row[7:]]
+
 for key,items in scopes.items():
- display_rows=[row[:6]+[[],*row[7:]] for row in items]
+ display_rows=list(map(display_row,items))
  first_page=output/(key+'.json')
  expected.add(first_page)
  write(first_page,{'count':len(items),'rows':display_rows[:page_size]})
@@ -123,10 +157,18 @@ for key,items in scopes.items():
   chunk=pages_output/f'{key}-{block}.json'
   expected.add(chunk)
   write(chunk,display_rows[start:start+page_size*pages_per_file])
+small_scopes={}
+for identifier,items in by_category.items():
+ if str(identifier) not in scopes and categories[identifier].get('slug') and items:
+  small_scopes.setdefault(identifier//small_bucket_size,{})[identifier]=list(map(display_row,items))
+for block,items in small_scopes.items():
+ chunk=small_output/f'{block}.json'
+ expected.add(chunk)
+ write(chunk,items)
 write(output/'sections.json',{'categories':data['categories'],'previews':{key:len(items) for key,items in scopes.items()}})
 write(main,data)
 write(output/'index.json',rows)
-for path in [*output.glob('*.json'),*pages_output.glob('*.json')]:
+for path in [*output.glob('*.json'),*pages_output.glob('*.json'),*small_output.glob('*.json')]:
  if path not in expected and path.name not in ('sections.json','index.json'): path.unlink()
 print(len(data['items']),'products with',sum(r[10] is not None for r in data['items']),'types and',sum(r[11] is not None for r in data['items']),'dimensions')
 for k in types: print(k,sum(row[10]==k for row in data['items']))
