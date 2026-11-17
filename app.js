@@ -67,7 +67,7 @@ function home() {
     <section class="project-feature kit-hero">${photo('./assets/riva-interior.webp','Пример рабочих мест с мебелью Riva в интерьере','loading="lazy" width="900" height="720"')}
       <div><p class="eyebrow">Серия Riva</p><h2>Соберите рабочие места</h2>
         <p>Выберите столы, кресла и тумбы. Посмотрите цену каждой позиции и попробуйте расставить мебель по размерам комнаты.</p>
-        <div class="actions"><a class="btn" href="#/project?section=kit">Собрать комплект</a><a class="text-link" href="#/projects/workspace-layout">Открыть планировщик</a></div></div>
+        <div class="actions"><a class="btn" href="#/project?section=kit">Собрать комплект</a><a class="btn secondary" href="#/planner">Открыть планировщик</a></div></div>
     </section>
     <section class="section"><div class="section-head"><h2>Наши проекты</h2><a class="text-link" href="#/projects">Все проекты</a></div>${projectShowcase()}</section>
     <section class="section home-delivery"><div class="section-head"><h2>Доставка и сборка</h2><a class="text-link" href="#/delivery">Сроки и условия</a></div>${serviceFacts()}</section>
@@ -266,8 +266,14 @@ function catalogPage(settings, preview, unavailable) {
   const children = selected ? (catChildren.get(selected.id) || []).filter(child=>!child.empty) : [];
   const sections = children.length>0 && children.length<=12
     ? '<div class="catalog-subsections"><span>Подразделы</span>'+children.map(entry=>'<a class="text-link" href="'+e(toCatalog({c:entry.slug || entry.id,p:null}))+'">'+e(entry.name)+'</a>').join('')+'</div>' : '';
-  return page(title,'<div class="catalog-shell"><aside class="catalog-sidebar"><details class="catalog-directory" '+
-    (matchMedia('(min-width: 961px)').matches?'open':'')+'><summary>Разделы каталога</summary><nav aria-label="Разделы каталога">'+
+  const desktop = matchMedia('(min-width: 961px)').matches;
+  const filterCount = chips.filter(([key])=>['max','w','series','k','unknown'].includes(key)).length;
+  return page(title,'<div class="catalog-shell"><aside class="catalog-sidebar" aria-label="Фильтры и разделы">'+
+    '<details class="catalog-filters" '+(desktop?'open':'')+'><summary>Фильтры'+(filterCount?' <span>'+filterCount+'</span>':'')+'</summary><form id="filters" class="filters-grid">'+
+    filters.join('')+'<label class="unknown-width"><input type="checkbox" name="unknown" value="1" '+
+    (includeUnknown?'checked':'')+'> Включить позиции без указанной ширины</label><button class="btn" type="submit">Применить</button>'+
+    (filterCount?'<a class="text-link reset-filters" href="'+e(toCatalog({max:null,w:null,series:null,k:null,unknown:null,p:null}))+'">Очистить фильтры</a>':'')+
+    '</form></details><details class="catalog-directory" '+(desktop || selected?'open':'')+'><summary>Разделы каталога</summary><nav aria-label="Разделы каталога">'+
     categoryItems(catChildren.get(0) || [],selected,settings)+'</nav></details></aside><div class="catalog-results"><div class="catalog-tools">'+
     (selected?.partsOnly?'<p class="catalog-notice">В этом разделе собраны отдельные модули и комплектующие. <a class="text-link" href="#/catalog'+
       (/шкаф/i.test(selected.name)?'?t=cabinets">Посмотреть готовые шкафы':'">Посмотреть готовую мебель')+'</a></p>':'')+sections+
@@ -275,14 +281,10 @@ function catalogPage(settings, preview, unavailable) {
       e(toCatalog({t:key,use:null,p:null}))+'" '+(type===key?'aria-current="page"':'')+'>'+(key?productTypes[key][0]:'Все типы')+'</a>').join('')+'</nav>'+
     (type==='tables'?'<div class="catalog-subsections"><span>Назначение</span>'+Object.entries(tablePurposes).map(([key,label])=>
       '<a class="text-link" href="'+e(toCatalog({use:key===purpose?null:key,p:null}))+'" '+(key===purpose?'aria-current="true"':'')+'>'+label+'</a>').join('')+'</div>':'')+
-    '<div class="catalog-bar"><details class="catalog-filters"><summary>Фильтры</summary><form id="filters" class="filters-grid">'+
-    (selected?'<p class="current-section">Раздел · '+e(selected.name)+'</p>':'')+filters.join('')+
-    '<button class="btn" type="submit">Применить</button><label class="unknown-width"><input type="checkbox" name="unknown" value="1" '+
-    (includeUnknown?'checked':'')+'> Показывать товары без указанной ширины</label></form></details>'+sortControl+'</div>'+
     (chips.length?'<div class="applied-filters" aria-label="Применённые фильтры">'+chips.map(([key,label])=>'<a class="chip" aria-label="Снять: '+e(label)+'" href="'+
       e(toCatalog({[key]:null,p:null,...(key==='w'?{unknown:null}:key==='t'?{use:null}:{})}))+'">'+e(label)+' <span aria-hidden="true">×</span></a>').join('')+'</div>':'')+
-    '</div><div class="catalog-heading"><p class="count-label">Найдено: '+catalogNumber.format(count)+'</p>'+
-    (chips.length?'<a class="text-link" href="#/catalog">Сбросить всё</a>':'')+'</div>'+ (grid || empty)+pagination+'</div></div>',levels);
+    '</div><div class="catalog-heading"><p class="count-label">Найдено: '+catalogNumber.format(count)+'</p>'+sortControl+
+    '</div>'+ (grid || empty)+pagination+'</div></div>',levels);
 }
 
 function logistics(item) {
@@ -375,7 +377,8 @@ function checkoutPage() {
 
 let kitPreferences = site.session('kit-preferences',{});
 let roomDraft = site.session('room-plan',{}) || {};
-let roomPlan = workspace.planSettings(roomDraft);
+let quotePlan = site.session('quote-plan',null);
+let cleanupPlanner;
 if (!kitPreferences || typeof kitPreferences!=='object') kitPreferences = {};
 
 function kitGroups() {
@@ -450,7 +453,14 @@ function resetKitCounts() {
 
 function currentKitPlan(qty) {
   const plan = kitPreferences.plan;
-  const desk = kitSelection(qty).find(item=>item.group.id==='desk');
+  const selection=kitSelection(qty);
+  if (plan?.v===2) {
+    const drawn=workspace.kitFor(plan);
+    const estimated=selection.filter(item=>item.id);
+    return drawn?.seats===qty && drawn.groups.length===estimated.length && drawn.groups.every(item=>
+      estimated.some(line=>line.group.id===item.type && line.id===item.id && line.qty===item.count)) ? plan : null;
+  }
+  const desk = selection.find(item=>item.group.id==='desk');
   return desk && plan?.seats===qty && plan.desk===desk.id && desk.qty===qty ? plan : null;
 }
 
@@ -468,26 +478,27 @@ function updateKitChoice(element) {
   updateEstimate();
 }
 
-function projectPage(target, option, example, qty, useKit) {
+function projectPage(target, option, example, qty, useKit, drawnPlan) {
   const planHelp = hasBackend ? 'Приложите план или ТЗ к запросу.' : 'Приложите план или ТЗ к письму перед отправкой.';
   const choices = seatPresets.includes(qty) ? seatPresets : [...seatPresets,qty];
-  return `<div class="shell page">${crumbs([['Комплектация офисов']])}<section class="project-hero"><div class="copy"><h1>Комплектация офисов</h1><p class="intro">Подберём мебель, подготовим планировку и смету, организуем доставку и монтаж.</p><div class="actions"><button class="btn" data-scroll="project-form">Получить расчёт</button><a class="text-link" href="#/project?section=kit">Собрать комплект Riva</a></div><p class="small form-hint">${planHelp}</p></div>${photo('./assets/meeting.webp','Стол и кресла в переговорной')}</section>
+  return `<div class="shell page">${crumbs([['Комплектация офисов']])}<section class="project-hero"><div class="copy"><h1>Комплектация офисов</h1><p class="intro">Подберём мебель, подготовим планировку и смету, организуем доставку и монтаж.</p><div class="actions"><button class="btn" data-scroll="project-form">Получить расчёт</button><a class="btn secondary" href="#/project?section=kit">Собрать комплект Riva</a></div><p class="small form-hint">${planHelp}</p></div>${photo('./assets/meeting.webp','Стол и кресла в переговорной')}</section>
     <section class="section"><div class="section-head"><h2>Этапы комплектации</h2></div><div class="steps">
     <div><h3>Задача и план</h3><p>Уточняем число мест, сроки, планировку и бюджет.</p></div><div><h3>Подбор и смета</h3><p>Согласуем модели, материалы, состав и стоимость поставки.</p></div><div><h3>Доставка и монтаж</h3><p>После согласования договора поставляем и монтируем мебель по графику.</p></div></div></section>
     <div class="project-demo ${useKit?'kit-first':'quote-first'}"><section class="panel" id="kit-builder" tabindex="-1"><h2>Соберите комплект Riva</h2><p class="small">Выберите модели и количество. При смене числа мест количество столов и кресел пересчитывается.</p>
       <label class="field-label" for="set-count">Количество рабочих мест</label><select class="field" id="set-count">${choices.map(count=>`<option value="${count}" ${count===qty?'selected':''}>${seatsLabel(count)}</option>`).join('')}</select><div class="kit-choices">${kitRows(qty)}</div><div class="summary" id="estimate" aria-live="polite"></div>
       <div id="kit-availability"></div><p class="small" id="kit-count-note" aria-live="polite"></p>
-      <div class="actions kit-actions"><button class="btn" data-check-kit hidden></button><button class="btn secondary" data-save-spec>Скачать состав</button></div>
-      <p class="small"><a class="text-link" id="planner-link" href="#/projects/workspace-layout?seats=${qty}">Открыть планировщик</a></p></section>
-      <form class="panel" id="request-form" data-kind="project" ${productRequestAttributes(target,option)} ${example?'data-case="'+e(example.id)+'"':''}><h2 id="project-form" tabindex="-1">${target?'Запросить расчёт по товару':'Запросить смету'}</h2>
+      <div class="actions kit-actions"><button class="btn" data-check-kit hidden></button><button class="btn secondary" data-save-spec>Скачать состав</button><button class="btn secondary" data-download-kit-plan hidden>Скачать план PNG</button></div>
+      <p class="small"><a class="text-link" id="planner-link" href="#/planner?seats=${qty}">Открыть планировщик</a></p></section>
+      <form class="panel" id="request-form" data-kind="project" ${drawnPlan?'data-drawn-plan="1"':''} ${productRequestAttributes(target,option)} ${example?'data-case="'+e(example.id)+'"':''}><h2 id="project-form" tabindex="-1">${target?'Запросить расчёт по товару':'Запросить смету'}</h2>
       ${transportNote()}
       ${target?'<p class="quote-context">'+e([productTitle(target.name),option?.[1]].filter(Boolean).join(' · '))+'</p>':''}
       ${example?'<p class="quote-context">Проект для примера · <a class="text-link" href="#/projects/'+e(example.id)+'">'+e(example.name)+' · '+e(example.zone)+'</a></p>':''}
-      ${target?'<input type="hidden" name="kit" value="">':'<label class="field-label" for="request-kit">Что рассчитать</label><select class="field" id="request-kit" name="kit"><option value="">Подбор по моему плану</option><option value="riva" '+(useKit?'selected':'')+' '+(kitEstimate(qty,city).ready?'':'disabled')+'>Комплект Riva</option></select>'}
+      ${drawnPlan?'<div class="quote-context"><p>План из планировщика · '+e(drawnPlan.width+' × '+drawnPlan.depth+' м')+'</p><div class="actions"><a class="text-link" href="#/planner">Вернуться к плану</a><button class="btn secondary" type="button" data-download-plan>Скачать PNG</button></div><p class="small">'+(hasBackend?'Расстановка сохранится в заявке.':'Приложите PNG к письму перед отправкой.')+'</p></div>':''}
+      ${target || drawnPlan?'<input type="hidden" name="kit" value="">':'<label class="field-label" for="request-kit">Что рассчитать</label><select class="field" id="request-kit" name="kit"><option value="">Подбор по моему плану</option><option value="riva" '+(useKit?'selected':'')+' '+(kitEstimate(qty,city).ready?'':'disabled')+'>Комплект Riva</option></select>'}
       <p class="small" id="quote-kit" aria-live="polite"></p>
       <label><span class="field-label">Город</span><input class="field" name="city" maxlength="80" value="${e(city)}" required></label>
       <label><span class="field-label">Адрес и условия подъёма</span><input class="field" name="address" maxlength="250" autocomplete="street-address" placeholder="Улица, этаж, есть ли грузовой лифт"></label>
-      <div class="form-two"><label><span class="field-label">${target?'Количество изделий':'Рабочих мест'}</span><input class="field" type="number" name="${target?'quantity':'seats'}" min="1" max="5000" value="${target?1:useKit?qty:''}" ${useKit || target?'required':''}></label><label><span class="field-label">${target?'К какой дате нужна мебель':'К какой дате офис должен быть готов'}</span><input class="field" type="date" name="date"></label></div>
+      <div class="form-two"><label><span class="field-label">${target?'Количество изделий':'Рабочих мест'}</span><input class="field" type="number" name="${target?'quantity':'seats'}" min="1" max="5000" value="${target?1:useKit?qty:drawnPlan?.items.filter(item=>item.type==='desk').length || ''}" ${useKit || target?'required':''}></label><label><span class="field-label">${target?'К какой дате нужна мебель':'К какой дате офис должен быть готов'}</span><input class="field" type="date" name="date"></label></div>
       <label><span class="field-label">Задача и бюджет</span><textarea class="field" name="task" rows="3" maxlength="1600" placeholder="Что нужно поставить и какой бюджет вы заложили"></textarea></label>
       ${hasBackend?'<label><span class="field-label">План или ТЗ, PDF или изображение до 8 МБ</span><input class="field" type="file" name="file" accept="application/pdf,image/jpeg,image/png"></label>':''}
       ${contactFields()}<button class="btn" type="submit">${hasBackend?'Отправить запрос':'Открыть письмо для расчёта'}</button>
@@ -515,10 +526,10 @@ function updateEstimate() {
     : 'Доставку, подъём и сборку рассчитаем по адресу.';
   document.querySelector('#kit-availability').innerHTML = `<p class="small">${logisticsNote}</p><p class="small">Проверим наличие всей партии и срок монтажа по запросу.</p>`;
   const check = document.querySelector('[data-check-kit]');
-  check.hidden = !quote.ready || Boolean(form.dataset.product);
+  check.hidden = !quote.ready || Boolean(form.dataset.product || form.dataset.drawnPlan);
   check.textContent = 'Проверить наличие на ' + seatsLabel(qty);
   document.querySelector('[data-save-spec]').disabled = !quote.ready;
-  document.querySelector('#planner-link').href = '#/projects/workspace-layout?seats=' + qty;
+  document.querySelector('#planner-link').href = '#/planner?seats=' + qty;
   prepareLinks(document.querySelector('#kit-builder'));
   const usesKit = form.elements.kit.value === officeConfig.workspaceKit?.id;
   if (form.elements.seats) form.elements.seats.required = usesKit;
@@ -526,8 +537,10 @@ function updateEstimate() {
     ? 'Комплект Riva: ' + seatsLabel(qty) + '. Проверим наличие всей партии.'
     : '';
   const adjusted = quote.products.filter(({group,qty:units})=>!group.optional && units!==qty);
-  const planNote = kitPreferences.plan ? (currentKitPlan(qty) ? 'Схема помещения приложится к смете комплекта.' : 'Схема сохранена в черновике. Примените её снова после изменения мест или модели стола.') : '';
+  const plan=currentKitPlan(qty);
+  const planNote = kitPreferences.plan ? (plan ? (hasBackend?'Схема помещения приложится к смете комплекта.':'Скачайте схему и приложите её к письму.') : 'Схема сохранена в черновике. Примените её снова после изменения состава.') : '';
   document.querySelector('#kit-count-note').textContent = [adjusted.length?'Количество изменено вручную · '+adjusted.map(({group,qty:units})=>group.label+' '+units+' шт.').join(', ')+'.':'',planNote].filter(Boolean).join(' ');
+  document.querySelector('[data-download-kit-plan]').hidden=plan?.v!==2;
 }
 
 function syncQuoteCount(qty) {
@@ -542,58 +555,42 @@ function syncQuoteCount(qty) {
   updateEstimate();
 }
 
-function workspaceLayout(qty) {
-  const desk = kitSelection(qty).find(item=>item.group.id==='desk');
-  const draftDesk = desk?.group.models.includes(roomDraft.desk) ? roomDraft.desk : desk?.id;
-  return page('Планировщик рабочих мест',`<p class="intro">Выберите столы, число мест и схему. Введите размеры комнаты, чтобы сравнить её с габаритами расстановки.</p>
-    <div class="planner-grid">
-      <section class="panel planner-controls" id="plan-controls"><h2>Помещение</h2>
-      <div class="form-two"><label><span class="field-label">Ширина, м</span><input class="field" type="number" min="2" max="60" step="0.1" name="width" value="${roomPlan.width}"></label>
-      <label><span class="field-label">Глубина, м</span><input class="field" type="number" min="2" max="60" step="0.1" name="depth" value="${roomPlan.depth}"></label></div>
-      <label><span class="field-label">Места</span><input class="field" type="number" min="1" max="40" name="seats" value="${Math.min(qty,40)}"></label>
-      <label><span class="field-label">Модель стола</span><select class="field" name="desk">${desk?.group.models.map(id=>productById.get(id)).filter(Boolean).map(item=>`<option value="${item.id}" ${draftDesk===item.id?'selected':''}>Riva · ${e(dimensionsLabel(item.dimensions))}</option>`).join('') || ''}</select></label>
-      <label><span class="field-label">Расстановка</span><select class="field" name="layout">${workspace.layouts.map(([key,label])=>`<option value="${key}" ${roomPlan.layout===key?'selected':''}>${label}</option>`).join('')}</select></label>
-      <label><span class="field-label">Расстояние между рядами или группами, м</span><input class="field" type="number" min="0.5" max="4" step="0.1" name="gap" value="${roomPlan.gap}"></label>
-      <button class="btn" id="plan-to-kit" aria-describedby="room-status" disabled>Применить к комплекту</button><p class="small">Параметры сохраняются в этом браузере.</p></section>
-      <section class="panel plan-visual"><h2>Расстановка столов</h2><div id="room-preview"></div><p id="room-status" class="plan-status" aria-live="polite"></p>
-      <p class="small">На схеме предусмотрено по 0,7 м на зону кресла. Двери, колонны, тумбы и проходы вдоль стен уточняются по плану.</p></section>
-    </div>`,[['Комплектация','#/project']]);
+function mountPlanner(args) {
+  const qty=validSeats(args.get('seats')) || validSeats(roomDraft.seats) || 8;
+  const kit=kitSelection(qty);
+  const models=kit.flatMap(({group})=>group.models.map(id=>productById.get(id)).filter(item=>item?.dimensions?.[0] && item.dimensions[1]).map(item=>({
+    type:group.id,product:item.id,label:group.id==='desk'?'Riva '+item.name.split(/\s+/)[0]:kitOptionLabel(group.id,item),
+    width:item.dimensions[0]/1000,depth:item.dimensions[1]/1000
+  })));
+  const selectedDesk=kit.find(item=>item.group.id==='desk')?.id;
+  const selectedChair=kit.find(item=>item.group.id==='chair')?.id;
+  const displayDraft=args.has('seats') && !roomDraft.items?.length ? {...roomDraft,desk:selectedDesk} : roomDraft;
+  return officePlanner.mount(main.querySelector('#office-planner'),{
+    draft:displayDraft,count:qty,models,defaultDesk:selectedDesk,defaultChair:selectedChair,
+    onSave(plan) {
+      roomDraft={...plan,seats:workspace.composition(plan).filter(item=>item.type==='desk').reduce((sum,item)=>sum+item.count,0)};
+      site.save('room-plan',roomDraft);
+    },
+    onQuote(plan) {
+      quotePlan=plan;
+      site.save('quote-plan',plan);
+      navigate('#/project?plan=1');
+    },
+    onKit(plan,selection) {
+      resetKitCounts();
+      kitPreferences.storage={id:0};
+      for (const item of selection.groups) kitPreferences[item.type]={id:item.id,...(item.type==='storage'?{qty:item.count}:{})};
+      kitPreferences.plan={...plan,seats:selection.seats,desk:selection.desk};
+      site.save('kit-preferences',kitPreferences);
+      navigate('#/project?section=kit&seats='+selection.seats);
+    }
+  });
 }
 
-function updateRoomPreview(save = false) {
-  const controls = document.querySelector('#plan-controls');
-  if (!controls) return;
-  const read = name=>controls.querySelector('[name="'+name+'"]').value;
-  const count = Number(read('seats'));
-  const desk = productById.get(Number(read('desk')));
-  const room = workspace.planSettings(Object.fromEntries(['width','depth','gap','layout'].map(key=>[key,read(key)])));
-  const valid = [...controls.querySelectorAll('input')].every(input=>input.value && input.checkValidity());
-  const layout = valid ? workspace.arrange(count,desk?.dimensions,room) : null;
-  const target = document.querySelector('#room-preview');
-  const status = document.querySelector('#room-status');
-  const apply = document.querySelector('#plan-to-kit');
-  const inside = Boolean(layout && layout.width <= room.width+.00001 && layout.depth <= room.depth+.00001);
-  apply.dataset.planSeats = inside ? String(count) : '';
-  apply.dataset.planDesk = desk?.id || '';
-  apply.disabled = !inside;
-  if (save && valid) {
-    roomPlan=room;
-    roomDraft={...room,seats:count,desk:desk?.id};
-    site.save('room-plan',roomDraft);
-  }
-  if (!layout) {
-    target.innerHTML='';
-    status.textContent='Проверьте размеры комнаты, расстояние и количество мест от 1 до 40.';
-    return;
-  }
-  const w = Math.max(room.width,layout.width);
-  const h = Math.max(room.depth,layout.depth);
-  const pct = (value,total)=>(value/total*100).toFixed(3)+'%';
-  const rect = (x,y,width,depth)=>'left:'+pct(x,w)+';top:'+pct(y,h)+';width:'+pct(width,w)+';height:'+pct(depth,h);
-  const shape = layout.tables.map(({x,y,width,depth,chairTop,chair,number})=>`<i class="diagram-desk" style="${rect(x,y,width,depth)}">${number}</i><i class="diagram-chair" style="${rect(x+width*.28,chairTop+.08,width*.44,chair-.16)}"></i>`).join('');
-  target.innerHTML=`<div class="room-diagram" style="aspect-ratio:${w}/${h};max-width:${Math.min(100,w/h*65)}%" aria-hidden="true"><div class="diagram-walls" style="${rect(0,0,room.width,room.depth)}"></div>${shape}</div>`;
-  status.textContent=(inside?'Помещается по габаритам. ':'Выходит за границы комнаты. ')+'Расстановка занимает '+catalogNumber.format(layout.width)+' × '+catalogNumber.format(layout.depth)+' м.'+(inside?'':' Измените число мест, модель или расстановку, чтобы применить схему.');
-  status.classList.toggle('does-not-fit',!inside);
+function planText(plan) {
+  if (!plan?.items) return [];
+  const counts=workspace.composition(plan).map(item=>item.label+' — '+item.count+' шт.');
+  return ['План помещения '+plan.width+' × '+plan.depth+' м',...counts];
 }
 
 function productRequestAttributes(item, option) {
@@ -679,7 +676,7 @@ function projectsPage(id) {
       <section class="spec"><h2>Мебель в кадре</h2><dl>${item.items.map(([zone,furniture])=>`<div><dt>${e(zone)}</dt><dd>${e(furniture)}</dd></div>`).join('')}</dl></section>
       <section class="section"><div class="section-head"><h2>Другие проекты</h2></div>${projectShowcase(item.id)}</section>`,[['Проекты','#/projects']]);
   return page('Выполненные проекты',`<p class="intro">Посмотрите клиентские залы, открытые офисы и рабочие зоны из портфолио. Для своего помещения можно собрать мебель и проверить расстановку по размерам комнаты.</p><div class="section">${projectShowcase()}</div>
-    <section class="project-feature kit-hero">${photo('./assets/riva-interior.webp','Рабочая мебель Riva в офисе','loading="lazy"')}<div><h2>Расстановка для вашего офиса</h2><p>Выберите мебель и сравните один ряд, два ряда и группы столов. Параметры можно перенести в расчёт комплекта.</p><a class="btn" href="#/projects/workspace-layout">Открыть планировщик</a></div></section>`);
+    <section class="project-feature kit-hero">${photo('./assets/riva-interior.webp','Рабочая мебель Riva в офисе','loading="lazy"')}<div><h2>Расстановка для вашего офиса</h2><p>Задайте размеры помещения, расставьте мебель и отправьте план на расчёт.</p><a class="btn" href="#/planner">Открыть планировщик</a></div></section>`);
 }
 
 function infoPage(key,id) {
@@ -698,6 +695,7 @@ function currentRoute() {
 function getRoute(address = currentRoute()) {
   const [route, args] = address.replace(/^#\/?/,'').split('?');
   const [key,id] = route.split('/');
+  if (key==='projects' && id==='workspace-layout') return {key:'planner',args:new URLSearchParams(args)};
   return {key,id,args:new URLSearchParams(args)};
 }
 
@@ -816,6 +814,7 @@ async function render(move = false) {
   const target = Number(args.get('product'));
   const example = key==='project' ? site.projects.find(item=>item.id===args.get('case')) : null;
   const useKit = key==='project' && args.get('section')==='kit' && !target;
+  const drawnPlan=key==='project' && !target && !useKit && args.get('plan')==='1' && quotePlan?.v===2 ? quotePlan : null;
   let details, variant, quoteOption;
   let catalogOptions, preview, catalogError=false;
 
@@ -826,7 +825,7 @@ async function render(move = false) {
     if (!catalog && !main.querySelector('h1')) main.innerHTML = '<p class="shell page" role="status">Загрузка каталога…</p>';
     catalogOptions=catalogSettings(args);
     try { preview=await loadCatalog(catalogOptions); } catch { catalogError=true; }
-  } else if (key==='project' || id==='workspace-layout') {
+  } else if (key==='project' || key==='planner') {
     await loadProjectItems();
     if (target) details=await loadDetail(target);
   } else if (key==='delivery') {
@@ -839,16 +838,18 @@ async function render(move = false) {
     if (details?.[2]?.some(item=>item[0]===selected)) variant = await site.variation(product,selected);
   } else await loadConfig;
   if (current!==revision) return;
+  cleanupPlanner?.();
+  cleanupPlanner=null;
   if (target) quoteOption=details?.[2]?.find(option=>option[0]===Number(args.get('variant')));
   if (!key || key==='main') main.innerHTML=home();
   else if (key==='catalog') {catalogOrigin=currentRoute();main.innerHTML=catalogPage(catalogOptions,preview,catalogError || !catalog);}
   else if (key==='project') {
-    main.innerHTML=projectPage(productById.get(target),quoteOption,example,validSeats(args.get('seats')) || 4,useKit);
+    main.innerHTML=projectPage(productById.get(target),quoteOption,example,validSeats(args.get('seats')) || 4,useKit,drawnPlan);
     if (!useKit) document.querySelector('#kit-builder').before(document.querySelector('#request-form'));
     updateEstimate();
-  } else if (id==='workspace-layout') {
-    main.innerHTML=workspaceLayout(validSeats(args.get('seats')) || validSeats(roomDraft.seats) || 8);
-    updateRoomPreview();
+  } else if (key==='planner') {
+    main.innerHTML=page('Планировщик офиса','<p class="intro">Задайте размеры комнаты, расставьте мебель и отправьте схему на расчёт.</p><div class="planner-grid" id="office-planner"></div>');
+    cleanupPlanner=mountPlanner(args);
   } else if (key==='product' && productById.has(product)) main.innerHTML=itemPage(productById.get(product),details,variant);
   else if (key==='cart') main.innerHTML=cartPage();
   else if (key==='checkout') main.innerHTML=checkoutPage();
@@ -858,7 +859,7 @@ async function render(move = false) {
     const kit=document.querySelector('#kit-builder');
     kit?.focus({preventScroll:true});
     kit?.scrollIntoView({block:'start'});
-  } else if (move && (key==='project' && (target || example) || key==='delivery' && target)) {
+  } else if (move && (key==='project' && (target || example || drawnPlan) || key==='delivery' && target)) {
     const form=document.querySelector('#request-form h2');
     form?.focus({preventScroll:true});
     form?.scrollIntoView({block:'start'});
@@ -868,6 +869,7 @@ async function render(move = false) {
   }
   prepareLinks(main);
   if (pathRouting) {
+    prepareLinks(document.querySelector('.site-header'));
     document.querySelector('.skip').href=location.pathname+location.search+'#main';
     const canonical=document.querySelector('link[rel="canonical"]');
     if (canonical && key!=='missing') {
@@ -897,7 +899,7 @@ function kitSummary(qty, destination) {
   return ['Комплект Riva на ' + seatsLabel(qty),
     ...quote.products.map(({product,qty})=>[product.name,product.sku ? 'арт. '+product.sku:'',qty+' шт.',money(product.price,product.max)].filter(Boolean).join(' · ')),
     ...pricing,
-    ...(layout ? ['Помещение: '+plan.width+' × '+plan.depth+' м. '+layout[1]+', расстояние '+plan.gap+' м.'] : [])];
+    ...(plan?.v===2 ? planText(plan).slice(0,1) : layout ? ['Помещение: '+plan.width+' × '+plan.depth+' м. '+layout[1]+', расстояние '+plan.gap+' м.'] : [])];
 }
 
 function downloadSpec() {
@@ -931,18 +933,6 @@ main.addEventListener('toggle',event=>{
 window.addEventListener('resize',()=>main.querySelectorAll('.project-track').forEach(syncCarousel));
 
 main.addEventListener('click', async (event)=>{
-  const apply = event.target.closest('#plan-to-kit');
-  if (apply) {
-    if (!apply.dataset.planSeats || !apply.dataset.planDesk) {event.preventDefault();return;}
-    updateRoomPreview(true);
-    if (apply.disabled) return;
-    resetKitCounts();
-    kitPreferences.desk = {id:Number(apply.dataset.planDesk)};
-    kitPreferences.plan = {...roomDraft};
-    site.save('kit-preferences',kitPreferences);
-    navigate('#/project?section=kit&seats='+apply.dataset.planSeats);
-    return;
-  }
   const control=event.target.closest('button');
   if (!control) return;
   const {photo, add, remove, scroll} = control.dataset;
@@ -962,6 +952,11 @@ main.addEventListener('click', async (event)=>{
     target?.scrollIntoView({block:'start'});
   }
   if (control.hasAttribute('data-save-spec')) downloadSpec();
+  if (control.hasAttribute('data-download-plan') && quotePlan?.items) workspace.download(quotePlan);
+  if (control.hasAttribute('data-download-kit-plan')) {
+    const plan=currentKitPlan(Number(document.querySelector('#set-count').value));
+    if (plan?.items) workspace.download(plan);
+  }
   if (control.hasAttribute('data-check-kit')) {
     const form = document.querySelector('#request-form');
     form.elements.kit.value = officeConfig.workspaceKit.id;
@@ -1016,7 +1011,6 @@ main.addEventListener('change',event=>{
     } else updateEstimate();
   }
   if (element.dataset.kitModel || element.dataset.kitQty) updateKitChoice(element);
-  if (element.closest('#plan-controls')) updateRoomPreview(true);
   if (element.id==='product-option') {
     const choice=Number(element.value);
     site.save('selected-'+element.dataset.id,choice);
@@ -1038,7 +1032,6 @@ main.addEventListener('change',event=>{
 
 main.addEventListener('input',event=>{
   const input=event.target;
-  if (input.closest('#plan-controls')) updateRoomPreview();
   if (input.form?.dataset.kind!=='project') return;
   if (input.name==='city') updateEstimate();
   if (input.name==='seats' && input.form.elements.kit?.value && validSeats(input.value)) syncQuoteCount(validSeats(input.value));
@@ -1065,6 +1058,10 @@ function mailBody(kind, data) {
     if (data.example) lines.push('Проект для примера: '+data.example);
     if (data.kit && data.kit===officeConfig.workspaceKit?.id) lines.push(...kitSummary(Number(data.seats),data.city));
     else if (data.product) lines.push('Товар: '+data.product,'Количество: '+data.quantity+' шт.');
+    if (data.roomPlan?.v===2) {
+      if (!data.kit) lines.push(...planText(data.roomPlan));
+      lines.push('Схема подготовлена в планировщике. Файл PNG приложу к письму.');
+    }
     lines.push(data.topic==='delivery'?'Просьба подтвердить стоимость услуг и сроки доставки.':'Просьба подтвердить наличие, итоговую стоимость и срок поставки с учётом услуг.');
   }
   return lines.filter(Boolean).join('\n');
@@ -1100,6 +1097,8 @@ main.addEventListener('submit',async(event)=>{
     data.variantId=Number(form.dataset.variant || 0);
     data.product=form.dataset.productLabel;
   }
+  if (data.kit) data.roomPlan=currentKitPlan(Number(data.seats));
+  else if (form.dataset.drawnPlan) data.roomPlan=quotePlan;
   const status=form.querySelector('.result');
   if (!hasBackend) {
     const href=site.mail(requestTitle(kind,data),mailBody(kind,data));
@@ -1116,7 +1115,6 @@ main.addEventListener('submit',async(event)=>{
     data.file=await toEncoded(data.file);
     if (kind==='project' && data.kit) {
       data.kitLines=kitEstimate(Number(data.seats),data.city).products.map(({group,product,qty})=>({group:group.id,id:product.id,qty}));
-      data.roomPlan=currentKitPlan(Number(data.seats));
     }
     const receipt=await site.post('requests',{kind,token:form.dataset.token,...data,lines:kind==='order'?cart.map(({id,choice,qty})=>({id,choice,qty})):[]});
     status.textContent='Заявка № '+receipt.id+' принята. Менеджер свяжется с вами для подтверждения.';
@@ -1147,6 +1145,46 @@ dialog.addEventListener('close',()=>{
 });
 document.querySelector('#city-name').textContent=city;
 saveCart();
+const catalogMenu=document.querySelector('.catalog-menu');
+const catalogTrigger=document.querySelector('#catalog-trigger');
+const catalogPanel=document.querySelector('#header-catalog');
+const hoverCatalog=matchMedia('(hover: hover) and (pointer: fine)');
+let menuFromHover=false;
+function showCatalogMenu(open) {
+  catalogTrigger.setAttribute('aria-expanded',String(open));
+  catalogPanel.hidden=!open;
+  if (!open) menuFromHover=false;
+}
+catalogMenu.addEventListener('pointerenter',event=>{
+  if (event.pointerType!=='mouse' || !hoverCatalog.matches || !catalogPanel.hidden) return;
+  menuFromHover=true;
+  showCatalogMenu(true);
+});
+catalogMenu.addEventListener('pointerleave',()=>{
+  if (hoverCatalog.matches && !catalogPanel.contains(document.activeElement)) showCatalogMenu(false);
+});
+catalogTrigger.addEventListener('click',()=>{
+  if (menuFromHover) {
+    menuFromHover=false;
+    return;
+  }
+  showCatalogMenu(catalogPanel.hidden);
+});
+catalogMenu.addEventListener('focusout',event=>{
+  if (!catalogMenu.contains(event.relatedTarget)) showCatalogMenu(false);
+});
+catalogPanel.addEventListener('click',event=>{
+  if (event.target.closest('a')) showCatalogMenu(false);
+});
+document.addEventListener('pointerdown',event=>{
+  if (!catalogMenu.contains(event.target) && !catalogPanel.hidden) showCatalogMenu(false);
+});
+document.addEventListener('keydown',event=>{
+  if (event.key==='Escape' && !catalogPanel.hidden) {
+    showCatalogMenu(false);
+    if (catalogMenu.contains(document.activeElement) || document.activeElement===document.body) catalogTrigger.focus();
+  }
+});
 site.backend.then(value=>{hasBackend=value;return render();});
 function onRouteChange() {
   const address=currentRoute();

@@ -8,12 +8,27 @@ const api = async (name,data) => {
   return body;
 };
 const values = (form) => Object.fromEntries(new FormData(form));
+const plans = new Map();
+function roomSummary(plan,id) {
+  if (!plan) return '';
+  const size=html(plan.width)+' × '+html(plan.depth)+' м';
+  if (plan.v!==2) return '<p>План: '+size+' · '+html(({single:'Один ряд',double:'Два ряда',islands:'Группы по четыре'})[plan.layout])+', между рядами или группами '+html(plan.gap)+' м.</p>';
+  plans.set(id,plan);
+  const models=workspace.composition(plan).map(item=>html(item.label)+' · '+item.count+' шт.').join('<br>');
+  return '<div class="quote-context"><p>План помещения · '+size+'</p><p class="small">'+models+'</p><button class="btn secondary" type="button" data-office-plan="'+id+'">Скачать план PNG</button></div>';
+}
+document.addEventListener('click',event=>{
+  const control=event.target.closest('[data-office-plan]');
+  const plan=control && plans.get(Number(control.dataset.officePlan));
+  if (plan) workspace.download(plan);
+});
 const notify = (form,text) => {
   const status=form.querySelector('.result');
   status.textContent=text;status.hidden=false;
 };
 async function requests() {
   const list=await api('requests');
+  plans.clear();
   document.querySelector('#request-count').textContent=list.length ? 'Всего в списке: '+list.length : 'Обращений пока нет.';
   document.querySelector('#request-list').innerHTML=list.map((item)=>{
     const p=item.payload;
@@ -23,7 +38,7 @@ async function requests() {
       ${p.delivery?'<p>Получение: '+html(p.delivery)+'</p>':''}
       ${p.kit?'<p><strong>'+html(p.kit)+'</strong></p>':''}${p.product?'<p>Товар: '+[p.product,p.variant,p.sku,p.quantity && p.quantity+' шт.'].filter(Boolean).map(html).join(' · ')+'</p>':''}
       ${p.example?'<p>Проект для примера: '+html(p.example)+'</p>':''}
-      ${p.roomPlan?'<p>План: '+html(p.roomPlan.width)+' × '+html(p.roomPlan.depth)+' м. '+html(({single:'Один ряд',double:'Два ряда',islands:'Группы по четыре'})[p.roomPlan.layout])+', между рядами или группами '+html(p.roomPlan.gap)+' м.</p>':''}
+      ${roomSummary(p.roomPlan,item.id)}
       ${p.seats?'<p>Мест: '+html(p.seats)+'</p>':''}${p.date?'<p>Желаемая дата: '+html(p.date)+'</p>':''}
       ${p.lines?'<ul>'+p.lines.map(r=>'<li>'+[html(r.name),html(r.variant),r.qty+' шт.',r.price==null?'цена уточняется':html(r.price)+' ₽ за шт.'].filter(Boolean).join(' · ')+'</li>').join('')+'</ul>':''}
       ${p.estimate?.totalFrom==null?'':'<p>Ориентир без подъёма: от '+html(new Intl.NumberFormat('ru-RU').format(p.estimate.totalFrom))+' ₽</p>'}

@@ -2,6 +2,7 @@ import argparse
 import base64
 import binascii
 import csv
+from collections import Counter
 from contextlib import contextmanager
 from datetime import date, datetime, timezone, timedelta
 from functools import lru_cache
@@ -49,7 +50,7 @@ variant_lock = Lock()
 MAX_FILE = 8 * 1024 * 1024
 MAX_FEED = 30 * 1024 * 1024
 STALE_AFTER = timedelta(hours=float(os.environ.get('GRAND_STOCK_TTL_HOURS', '36')))
-FILES = {'index.html', 'style.css', 'store.js', 'app.js', 'workspace.js', 'site.json'}
+FILES = {'index.html', 'style.css', 'store.js', 'app.js', 'workspace.js', 'planner.js', 'site.json'}
 ALLOWED_TYPES = {
     'application/pdf': (b'%PDF-',),
     'image/jpeg': (b'\xff\xd8\xff',),
@@ -344,10 +345,67 @@ def quote_selection(data,kit,count):
         raise Problem('Выберите столы и кресла для комплекта.')
     return list(selected.values())
 
-def quote_plan(data, count, desk):
+def plan_measure(value, minimum, maximum):
+    if type(value) not in (int,float) or not minimum <= value <= maximum:
+        raise Problem('Проверьте размеры и позиции на плане.')
+    return round(value,3)
+
+def editable_plan(plan, kit_lines=None):
+    width = plan_measure(plan.get('width'),2,60)
+    depth = plan_measure(plan.get('depth'),2,60)
+    objects = plan.get('items')
+    if not isinstance(objects,list) or not 1 <= len(objects) <= 120:
+        raise Problem('Добавьте предметы на план.')
+    models = {model:group['id'] for group in site_config()['workspaceKit']['groups'] for model in group['models']}
+    furniture = Counter()
+    used_ids = set()
+    entries = []
+    boxes = []
+    for item in objects:
+        if not isinstance(item,dict):
+            raise Problem('Предмет на плане не распознан.')
+        ident = integer(item.get('id'),1,9_999_999)
+        model = integer(item.get('product'),0,999_999_999)
+        rotation = integer(item.get('rotation'),0,270)
+        if ident in used_ids or rotation not in {0,90,180,270}:
+            raise Problem('Проверьте номера предметов и углы поворота.')
+        used_ids.add(ident)
+        kind = item.get('type')
+        if model and models.get(model)==kind:
+            row = record(model)
+            if not row[11] or not all(row[11][:2]):
+                raise Problem('У модели отсутствуют габариты.')
+            span, height = (size/1000 for size in row[11][:2])
+            label = row[1]
+            furniture[model] += 1
+        elif not model and kind in ('door','column'):
+            span = plan_measure(item.get('width'),.1,3)
+            height = plan_measure(item.get('depth'),.1,3)
+            label = 'Дверной проём' if kind=='door' else 'Колонна'
+        else:
+            raise Problem('На плане есть неизвестная модель или предмет.')
+        x = plan_measure(item.get('x'),0,width)
+        y = plan_measure(item.get('y'),0,depth)
+        w, h = (height,span) if rotation%180 else (span,height)
+        if x+w > width+.001 or y+h > depth+.001 or any(
+            x+.001<s+dx and s+.001<x+w and y+.001<t+dy and t+.001<y+h for s,t,dx,dy in boxes
+        ):
+            raise Problem('Устраните пересечения и проверьте границы комнаты.')
+        boxes.append((x,y,w,h))
+        entries.append({'id':ident,'type':kind,'product':model,'label':label,
+                        'x':x,'y':y,'width':span,'depth':height,'rotation':rotation})
+    if not furniture:
+        raise Problem('Добавьте на план хотя бы один предмет мебели.')
+    if kit_lines is not None and dict(furniture)!={line['id']:line['qty'] for line in kit_lines}:
+        raise Problem('Модели и количества в смете должны совпадать с планом.')
+    return {'v':2,'width':width,'depth':depth,'items':entries}
+
+def quote_plan(data, count, desk, kit_lines):
     plan = data.get('roomPlan')
     if not plan:
         return None
+    if isinstance(plan,dict) and plan.get('v')==2:
+        return editable_plan(plan,kit_lines)
     if not isinstance(plan,dict) or plan.get('layout') not in ('single','double','islands'):
         raise Problem('Проверьте план расстановки.')
     metrics = {key:amount(plan.get(key),maximum) for key,maximum in [('width',60),('depth',60),('gap',4)]}
@@ -407,6 +465,11 @@ def project_request(db,data):
     config = site_config()
     kit = config.get('workspaceKit')
     if not choice:
+        plan = data.get('roomPlan')
+        if plan:
+            if not isinstance(plan,dict) or plan.get('v')!=2:
+                raise Problem('Проверьте план расстановки.')
+            payload['roomPlan'] = editable_plan(plan)
         return payload
     if not kit or choice != kit['id'] or count is None:
         raise Problem('Выберите комплект из списка.')
@@ -429,7 +492,7 @@ def project_request(db,data):
     total = round(furniture + delivery + assembly,2) if all(value is not None for value in (furniture,delivery,assembly)) else None
     desk_ids = next((group['models'] for group in kit.get('groups',[]) if group['id']=='desk'),kit['products'][:1])
     desk = next((row for row in output if row['id'] in desk_ids),None)
-    payload.update(kit=kit['name'],lines=output,roomPlan=quote_plan(data,count,desk),estimate={
+    payload.update(kit=kit['name'],lines=output,roomPlan=quote_plan(data,count,desk,output),estimate={
         'furniture':furniture,'deliveryFrom':delivery,'assembly':assembly,'totalFrom':total
     })
     return payload

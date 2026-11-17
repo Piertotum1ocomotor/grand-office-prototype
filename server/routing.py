@@ -11,6 +11,7 @@ PAGES = {
     'about': ('/o-kompanii/', 'О компании', 'Гранд-Офис комплектует офисы и поставляет мебель в Перми.'),
     'contacts': ('/kontakty/', 'Контакты', 'Гранд-Офис, Пермь, ул. Екатерининская, 10. Телефон +7 (342) 215-58-98.'),
     'showroom': ('/shourum/', 'Визит в офис', 'Адрес, график и маршрут в офис Гранд-Офиса.'),
+    'planner': ('/planirovshhik-ofisa/', 'Планировщик офиса', 'Расставьте офисную мебель по размерам помещения, сохраните план и запросите смету.'),
     'projects': ('/nashi-proekty/', 'Выполненные проекты', 'Фотографии реализованных проектов Гранд-Офиса.'),
     'cart': ('/cart/', 'Корзина', ''),
     'checkout': ('/checkout/', 'Запрос поставки', ''),
@@ -21,10 +22,10 @@ ALIASES = {
     '/dizajn-proekt/':'project', '/dostavka-i-sborka/':'delivery', '/delivery/':'delivery',
     '/servis/':'service', '/oplata/':'service', '/vozvrat/':'service', '/service/':'service',
     '/about/':'about', '/contacts/':'contacts', '/showroom/':'showroom',
+    '/planner/':'planner', '/projects/workspace-layout/':'planner', '/nashi-proekty/workspace-layout/':'planner',
     '/kejsy/':'projects', '/projects/':'projects', '/index.html/':'',
 }
 PROJECT_PATH = PAGES['projects'][0]
-PLANNER = 'workspace-layout'
 NON_INDEXED = {'cart','checkout'}
 
 class NotFound(Exception):
@@ -157,9 +158,8 @@ class Routes:
         for prefix in (PROJECT_PATH,'/projects/'):
             if path.startswith(prefix):
                 ident=path[len(prefix):-1]
-                if ident in PROJECTS or ident == PLANNER:
-                    title=PROJECTS.get(ident,'Планировщик рабочих мест')
-                    return Page('projects',PROJECT_PATH+ident+'/',title,ident=ident,params=args,indexed=ident != PLANNER)
+                if ident in PROJECTS:
+                    return Page('projects',PROJECT_PATH+ident+'/',PROJECTS[ident],ident=ident,params=args)
         raise NotFound
 
     def sitemap_paths(self):
