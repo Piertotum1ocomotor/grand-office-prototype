@@ -32,6 +32,16 @@ const site = (() => {
     });
     return catalogRequest;
   };
+  const browseRequests = new Map();
+  const browse = (key) => {
+    if (!browseRequests.has(key)) {
+      browseRequests.set(key,get('./data/browse/'+key+'.json').catch((error)=>{
+        browseRequests.delete(key);
+        throw error;
+      }));
+    }
+    return browseRequests.get(key);
+  };
   let featured;
   const getFeatured = () => (featured ??= get('./data/featured.json').catch(()=>[]));
   const datasets = new Map();
@@ -98,5 +108,5 @@ const site = (() => {
     ['Специализированная мебель','5–10 дней','special'],
     ['Мебель для обеденных зон','5–10 дней','dining']
   ];
-  return { original, email, phone, escape, normalize, format, money, session, save, config, catalog, getFeatured, getDetails, variation, backend, post, mail, startCategories, projects, delivery };
+  return { original, email, phone, escape, normalize, format, money, session, save, config, catalog, browse, getFeatured, getDetails, variation, backend, post, mail, startCategories, projects, delivery };
 })();

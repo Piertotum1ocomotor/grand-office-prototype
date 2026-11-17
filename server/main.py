@@ -150,7 +150,7 @@ def public_detail(product):
     with database() as db:
         name = db.execute('SELECT name FROM product_content WHERE product=?',(product,)).fetchone()
     if name and name['name']: summary[1] = name['name']
-    return [original[0],original[1],options,description,original[4],combined(edits.get(0),suppliers.get(0))[1],summary]
+    return [original[0],original[1],options,description,original[4],combined(edits.get(0),suppliers.get(0))[1],summary,*original[7:]]
 
 def text(payload, key, size, required=False):
     value = payload.get(key,'')
@@ -307,7 +307,7 @@ def quote_selection(data,kit,count):
         raise Problem('Выберите столы и кресла для комплекта.')
     return list(selected.values())
 
-def quote_plan(data):
+def quote_plan(data, count, desk):
     plan = data.get('roomPlan')
     if not plan:
         return None
@@ -316,10 +316,30 @@ def quote_plan(data):
     metrics = {key:amount(plan.get(key),maximum) for key,maximum in [('width',60),('depth',60),('gap',4)]}
     if any(metrics[key] is None or metrics[key]<minimum for key,minimum in [('width',2),('depth',2),('gap',0.5)]):
         raise Problem('Проверьте размеры комнаты и расстояние между рядами.')
+    if not desk or desk['qty'] != count or count > 40 or plan.get('seats',count)!=count or plan.get('desk',desk['id'])!=desk['id']:
+        raise Problem('Проверьте число столов и модель в расстановке.')
+    size = record(desk['id'])[11]
+    if not size or not all(size[:2]):
+        raise Problem('У выбранного стола отсутствуют габариты для расстановки.')
+    width, depth = (millimeters/1000 for millimeters in size[:2])
+    layout = plan['layout']
+    gap = metrics['gap']
+    main_row = depth+0.7
+    if layout == 'single':
+        required_width, required_depth = count*width, main_row
+    elif layout == 'double':
+        required_width = ((count+1)//2)*width
+        required_depth = 2*main_row+gap if count>1 else main_row
+    else:
+        groups, last = divmod(count-1,4)
+        required_width = groups*(2*width+gap)+min(last+1,2)*width
+        required_depth = 2*main_row+gap if count>2 else main_row
+    if required_width>metrics['width']+0.00001 or required_depth>metrics['depth']+0.00001:
+        raise Problem('Выбранная расстановка выходит за границы комнаты.')
     return {**metrics,'layout':plan['layout']}
 
 def project_request(db,data):
-    count = integer(data.get('seats'),1,5000)
+    count = integer(data['seats'],1,5000) if data.get('seats') not in (None,'') else None
     deadline = text(data,'date',20)
     if deadline:
         try:
@@ -330,12 +350,29 @@ def project_request(db,data):
         'seats': count, 'date': deadline, 'task': text(data,'task',1600),
         'address': text(data,'address',250), 'product': text(data,'product',350)
     }
+    if data.get('topic') == 'delivery':
+        payload['topic'] = 'delivery'
+    if data.get('caseId'):
+        examples = {'sber':'Сбер','rshb':'Россельхозбанк','lukoil':'ЛУКОЙЛ','gazprom':'Газпром'}
+        case_id = text(data,'caseId',40)
+        if case_id not in examples:
+            raise Problem('Выберите проект из портфолио.')
+        payload.update(caseId=case_id,example=examples[case_id])
+    if data.get('productId'):
+        identifier = integer(data['productId'],1,999_999_999)
+        row = record(identifier)
+        variant = variant_id(identifier,data.get('variantId',0))
+        label = next((option[1] for option in detail(identifier)[2] if option[0]==variant),'')
+        content = db.execute('SELECT name FROM product_content WHERE product=?',(identifier,)).fetchone()
+        payload.update(product=content['name'] if content and content['name'] else row[1],
+                       productId=identifier,sku=row[2],variant=label,variantId=variant,
+                       quantity=integer(data.get('quantity'),1,5000))
     choice = text(data,'kit',40)
     config = site_config()
     kit = config.get('workspaceKit')
     if not choice:
         return payload
-    if not kit or choice != kit['id']:
+    if not kit or choice != kit['id'] or count is None:
         raise Problem('Выберите комплект из списка.')
     output = []
     for product,quantity in quote_selection(data,kit,count):
@@ -354,7 +391,9 @@ def project_request(db,data):
     delivery = rates['deliveryFrom'] if local and rates else None
     assembly = round(furniture * rates['assemblyPercent'] / 100,2) if local and rates and furniture is not None else None
     total = round(furniture + delivery + assembly,2) if all(value is not None for value in (furniture,delivery,assembly)) else None
-    payload.update(kit=kit['name'],lines=output,roomPlan=quote_plan(data),estimate={
+    desk_ids = next((group['models'] for group in kit.get('groups',[]) if group['id']=='desk'),kit['products'][:1])
+    desk = next((row for row in output if row['id'] in desk_ids),None)
+    payload.update(kit=kit['name'],lines=output,roomPlan=quote_plan(data,count,desk),estimate={
         'furniture':furniture,'deliveryFrom':delivery,'assembly':assembly,'totalFrom':total
     })
     return payload

@@ -17,12 +17,14 @@ async function requests() {
   document.querySelector('#request-count').textContent=list.length ? 'Всего в списке: '+list.length : 'Обращений пока нет.';
   document.querySelector('#request-list').innerHTML=list.map((item)=>{
     const p=item.payload;
-    return `<form class="panel" data-request="${item.id}"><h3>${item.kind==='order'?'Заказ':'Комплектация'} № ${item.id}</h3>
+    return `<form class="panel" data-request="${item.id}"><h3>${item.kind==='order'?'Поставка':p.topic==='delivery'?'Доставка':'Запрос сметы'} № ${item.id}</h3>
       <p>${html(p.name)} · ${html(p.contact)} · ${html(p.city)}</p>
       ${p.address?'<p>Адрес и условия подъёма: '+html(p.address)+'</p>':''}${p.task?'<p>'+html(p.task)+'</p>':''}
-      ${p.kit?'<p><strong>'+html(p.kit)+'</strong></p>':''}${p.product?'<p>Товар: '+html(p.product)+'</p>':''}
+      ${p.delivery?'<p>Получение: '+html(p.delivery)+'</p>':''}
+      ${p.kit?'<p><strong>'+html(p.kit)+'</strong></p>':''}${p.product?'<p>Товар: '+[p.product,p.variant,p.sku,p.quantity && p.quantity+' шт.'].filter(Boolean).map(html).join(' · ')+'</p>':''}
+      ${p.example?'<p>Проект для примера: '+html(p.example)+'</p>':''}
       ${p.roomPlan?'<p>План: '+html(p.roomPlan.width)+' × '+html(p.roomPlan.depth)+' м. '+html(({single:'Один ряд',double:'Два ряда',islands:'Группы по четыре'})[p.roomPlan.layout])+', между рядами или группами '+html(p.roomPlan.gap)+' м.</p>':''}
-      ${p.seats?'<p>Мест: '+html(p.seats)+(p.date?' · дата готовности офиса: '+html(p.date):'')+'</p>':''}
+      ${p.seats?'<p>Мест: '+html(p.seats)+'</p>':''}${p.date?'<p>Желаемая дата: '+html(p.date)+'</p>':''}
       ${p.lines?'<ul>'+p.lines.map(r=>'<li>'+[html(r.name),html(r.variant),r.qty+' шт.',r.price==null?'цена уточняется':html(r.price)+' ₽ за шт.'].filter(Boolean).join(' · ')+'</li>').join('')+'</ul>':''}
       ${p.estimate?.totalFrom==null?'':'<p>Ориентир без подъёма: от '+html(new Intl.NumberFormat('ru-RU').format(p.estimate.totalFrom))+' ₽</p>'}
       ${item.file_name?'<p><a class="text-link" href="/api/office/attachments/'+item.id+'">'+html(item.file_name)+'</a></p>':''}
