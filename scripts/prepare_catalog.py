@@ -79,7 +79,16 @@ def type_of(name,ids):
 def kind_of(name):
  hits=[(m.start(),kind) for kind,pattern in [('parts',parts),('modules',modules),('furniture',furniture)] if (m:=pattern.search(name))]
  return min(hits)[1] if hits else 'furniture'
+
+# These Bern articles were also assigned to Capital in the source catalog.
+excluded_categories = {
+ 92594: {13998},
+ 92619: {13996, 27262},
+ 205657: {13998},
+}
 for row in data['items']:
+ if row[0] in excluded_categories:
+  row[6] = [category for category in row[6] if category not in excluded_categories[row[0]]]
  key=row[0]//1000
  if key not in shardfiles:
   p=root/'products'/f'{key}.json'

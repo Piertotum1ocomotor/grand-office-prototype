@@ -36,7 +36,10 @@
         <a class="header-project" href="#/project" data-nav="project" aria-label="Комплектация офисов">Комплектация</a>
         <a class="header-planner" href="#/planner" data-nav="planner">Планировщик</a>
       </nav>
-      <form id="global-search" role="search"><label class="sr-only" for="search-input">Поиск по каталогу</label><input id="search-input" type="search" placeholder="Название или артикул" maxlength="120"><button type="submit" aria-label="Найти" title="Найти">⌕</button></form>
+      <div class="header-search">
+        <form id="global-search" role="search"><label class="sr-only" for="search-input">Поиск по каталогу</label><input id="search-input" type="search" placeholder="Товар, артикул или коллекция" maxlength="120" autocomplete="off" aria-controls="search-collections"><button type="submit" aria-label="Найти" title="Найти">⌕</button></form>
+        <nav id="search-collections" aria-label="Подходящие коллекции" hidden></nav>
+      </div>
       <a class="bag" href="#/cart" aria-label="Корзина"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h16l1 13H3L4 8Z"/><path d="M8 9V6a4 4 0 0 1 8 0v3"/></svg><span id="cart-count">0</span></a>
       <button class="mobile-menu-trigger" type="button" aria-label="Открыть меню" aria-controls="mobile-menu" aria-expanded="false"><i aria-hidden="true"></i></button>
     </div>
