@@ -607,8 +607,6 @@ select.field[multiple],select.field[size]:not([size="1"]){appearance:auto;backgr
 .collection-tools{display:grid;gap:12px;margin-block:20px 17px;padding-bottom:16px;border-bottom:1px solid var(--line)}
 .collection-tools .quick-categories{margin:0}
 .collection-classes .chip{font-size:14px;padding-block:6px}
-.collection-controls{display:flex;align-items:center;flex-wrap:wrap;gap:var(--action-gap)}
-.collection-controls{justify-content:space-between}
 #collection-search{display:flex;gap:var(--action-gap);align-items:center;width:min(100%,410px)}
 #collection-search .field{flex:1}
 .collection-group{margin-block:22px 36px}
@@ -625,7 +623,6 @@ select.field[multiple],select.field[size]:not([size="1"]){appearance:auto;backgr
 .product-prose{display:grid;gap:.8em;font-size:clamp(16px,1.5vw,18px);line-height:1.65;white-space:pre-line;overflow-wrap:anywhere}
 .catalog-navigation{display:flex;align-items:center;flex-wrap:wrap;gap:8px 16px;margin-block:18px}
 .catalog-mode-nav{display:flex;gap:5px;width:fit-content;max-width:100%;padding:4px;background:#eee9e5;border-radius:9px}
-.catalog-reset-scope{font-size:14px}
 .catalog-mode-nav a{display:grid;place-items:center;min-height:38px;padding:7px 16px;border:1px solid transparent;border-radius:6px;line-height:1.15;text-align:center}
 .catalog-mode-nav a[aria-current=page]{background:var(--paper);border-color:#dccbc3;color:var(--brand-dark)}
 .catalog-department-grid,.catalog-class-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:15px}
@@ -638,6 +635,7 @@ select.field[multiple],select.field[size]:not([size="1"]){appearance:auto;backgr
 .catalog-department-options,.catalog-collection-heading{margin-top:24px}
 .catalog-department-options h2,.catalog-collection-heading{font-size:clamp(24px,3vw,38px);margin-bottom:10px}
 .catalog-type-tabs{display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:10px 18px;margin-bottom:8px}
+.page>h1+.catalog-type-tabs:not(:empty){margin-top:18px}
 .catalog-finish{display:grid;gap:4px;width:min(100%,290px)}
 .catalog-finish .field-label{margin:0}
 .product-finishes{margin:3px 0 9px;overflow-wrap:anywhere}
@@ -652,6 +650,7 @@ select.field[multiple],select.field[size]:not([size="1"]){appearance:auto;backgr
 }
 @media(max-width:620px){
   .catalog-navigation{margin-block:14px}
+  .page>h1+.catalog-type-tabs:not(:empty){margin-top:14px}
   .catalog-mode-nav{display:flex;width:100%;gap:3px}
   .catalog-mode-nav a{flex:1}
   .catalog-mode-nav a{font-size:13px;min-height:35px;padding:6px 3px}
