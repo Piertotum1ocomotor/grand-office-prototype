@@ -364,12 +364,22 @@ function showDepartmentIndex(settings) {
   return !['c','view','q','t','p','sort',...filterFields].some(key=>settings.get(key));
 }
 
-function catalogModeNav(active) {
-  const modes = [['sections','По разделам',{}],['products','По типу мебели',{view:'products'}],
-    ['collections','Коллекции',{view:'collections'}]];
-  return '<nav class="catalog-mode-nav" aria-label="Способ подбора">'+modes.map(([mode,label,params])=>
-    '<a href="'+e(catalogLink('',params))+'"'+(mode===active?' aria-current="page"':'')+'>'+label+'</a>'
-  ).join('')+'</nav>';
+function catalogModeNav(active, settings, selected) {
+  let collectionBranch = selected;
+  while (collectionBranch && !collectionScope(collectionBranch)) collectionBranch = catById.get(collectionBranch.parent);
+  const section = collectionBranch || categoryRoot(selected);
+  const modes = [
+    ['sections','По разделам',catalogLink('',{c:section?.slug})],
+    ['products','По типу мебели',catalogLink(settings,{view:'products',cq:null,cp:null,p:null})]
+  ];
+  if (collectionBranch || !selected) {
+    modes.push(['collections','Коллекции',catalogLink('',{c:collectionBranch?.slug,view:'collections'})]);
+  }
+  return '<div class="catalog-navigation"><nav class="catalog-mode-nav" aria-label="Способ подбора">'+modes.map(([mode,label,href])=>{
+    const current = mode===active;
+    if (current && (mode!=='collections' || !selected || collectionScope(selected))) href=catalogLink(settings);
+    return '<a href="'+e(href)+'"'+(current?' aria-current="page"':'')+'>'+label+'</a>';
+  }).join('')+'</nav>'+(selected?'<a class="text-link catalog-reset-scope" href="#/catalog">Весь каталог</a>':'')+'</div>';
 }
 
 function catalogBrowseCard(label, image, link, caption = '') {
@@ -469,7 +479,7 @@ function collectionOverview(settings, selected) {
   if (tier) levels.push([section.name,catalogLink('',{c:catById.get(section.id).slug,view:settings.get('view')})]);
   const browseNav = department ? '' : '<nav class="quick-categories catalog-collection-segments" aria-label="Разделы коллекций">'+segmentTabs+'</nav>';
   const ready = department && !tier && !query ? catalogDepartmentOptions(section) : '';
-  return page(title,catalogModeNav(department?'sections':'collections')+ready+
+  return page(title,catalogModeNav(department?'sections':'collections',settings,selected)+ready+
     (department && !tier?'<h2 class="catalog-collection-heading">Коллекции раздела</h2>':'')+
     '<div class="collection-tools">'+browseNav+classTabs+'<div class="collection-controls"><form id="collection-search" role="search" aria-label="Поиск коллекции">'+
     '<label class="sr-only" for="collection-query">Название коллекции</label><input class="field" type="search" id="collection-query" name="cq" value="'+
@@ -603,8 +613,8 @@ function catalogPage(settings, preview, unavailable) {
       view:selected ? settings.get('view') : 'products'}))+'" '+
     (type===key && (!collection || selected.id===collection.id)?'aria-current="page"':'')+'>'+
     (key?productTypes[key][0]:collection?'Вся мебель коллекции':'Все типы')+'</a>').join('')+'</nav>' : '';
-  const mode = collection ? 'collections' : selected && settings.get('view')!=='products' ? 'sections' : 'products';
-  const catalogTools = catalogModeNav(mode)+'<div class="catalog-type-tabs">'+typeTabs+'</div>'+
+  const mode = settings.get('view')==='products' || !selected ? 'products' : collection ? 'collections' : 'sections';
+  const catalogTools = catalogModeNav(mode,settings,selected)+'<div class="catalog-type-tabs">'+typeTabs+'</div>'+
     (sections?'<details class="catalog-subsection-toggle"><summary>'+(collection?'Подразделы коллекции':'Подразделы')+'</summary>'+sections+'</details>':'')+
     (collection||queryCollections?'<p class="catalog-related"><a class="text-link" href="'+e(collectionsLink)+'">'+
       (collection?'К коллекциям раздела':'Коллекции по запросу')+'</a></p>':'');
@@ -657,6 +667,11 @@ function descriptionParagraphs(text) {
   return paragraphs.map(part=>'<p>'+e(part)+'</p>').join('');
 }
 
+function catalogOrigin(address) {
+  return address?.length<=1800 && /^#\/catalog(?:-preview)?(?:\?[^#]*)?$/.test(address) ?
+    catalogLink(catalogSettings(getRoute(address).args)) : '';
+}
+
 function itemPage(item, detail, variant, origin) {
   const [images=[],specs=[],opts=[],description=''] = detail || [];
   const baseImages = images.length ? images : item.image ? [item.image] : [];
@@ -669,9 +684,8 @@ function itemPage(item, detail, variant, origin) {
   const warranty = specs.find(([label])=>/гаранти/i.test(label))?.[1] ||
     description.match(/(?:гарантия|гарантийный срок)\s*(?:—|–|-|:)?\s*((?:от\s+)?\d+(?:\s*(?:–|-|до)\s*\d+)?\s*(?:месяц[а-я]*|год[а-я]*|лет))/i)?.[1];
   const liveStock = variant?.stock ?? selected?.[3] ?? (hasBackend && !opts.length ? detail?.[5] : null);
-  const validOrigin = origin?.length<=1800 && /^#\/catalog(?:-preview)?(?:\?[^#]*)?$/.test(origin);
-  const filter = catalogSettings(validOrigin ? getRoute(origin).args : '');
-  const from = validOrigin ? catalogLink(filter) : '';
+  const from = catalogOrigin(origin);
+  const filter = from ? getRoute(from).args : new URLSearchParams();
   const category = collectionCategory(selectedCategory(filter.get('c'))) || selectedSeries(filter.get('series'));
   const collection = collectionForProduct(item,category);
   const levels = [['Каталог','#/catalog']];
@@ -684,9 +698,10 @@ function itemPage(item, detail, variant, origin) {
       ${pics.length>1 ? '<div class="gallery-thumbs">'+pics.slice(0,8).map((src,i)=>`<button type="button" data-photo="${e(src)}" data-variant-photo="${src===matchingPhoto}" aria-label="Фотография ${i+1}">${photo(src,'','loading="lazy"')}</button>`).join('')+'</div>':''}</section>
       <section class="product-info">
       <p class="product-price">${selected?(priceOf(item,selected,variant)==null ? '<span class="small">Цена варианта уточняется</span>' : money(priceOf(item,selected,variant))):money(item.price,item.max)}</p>
-      ${opts.length? `<label><span class="field-label">Вариант</span><select class="field" id="product-option" data-id="${item.id}"><option value="">Выберите вариант</option>${opts.map((o)=>`<option value="${o[0]}" ${o===selected?'selected':''}>${e(o[1] || ('Вариант ' + o[0]))}</option>`).join('')}</select></label>`:''}
+      ${opts.length? `<label><span class="field-label">Вариант</span><select class="field" id="product-option" data-id="${item.id}" ${selected?'':'aria-describedby="variant-help"'}><option value="">Выберите вариант</option>${opts.map((o)=>`<option value="${o[0]}" ${o===selected?'selected':''}>${e(o[1] || ('Вариант ' + o[0]))}</option>`).join('')}</select></label>
+      ${selected?'':'<p class="small" id="variant-help">Выберите вариант, чтобы добавить товар в корзину.</p>'}`:''}
       <p class="small" id="variant-status" role="status" hidden></p>
-      <div class="actions"><button class="btn" data-add="${item.id}" ${(opts.length && !selected) || liveStock===0?'disabled':''}>В корзину</button><a class="btn secondary" href="#/project?${context}">Запросить расчёт</a></div><p class="result" id="cart-result" role="status" hidden></p>
+      <div class="actions"><button class="btn" data-add="${item.id}" ${(opts.length && !selected) || liveStock===0?'disabled':''}>В корзину</button><a class="btn secondary" data-item-quote href="#/project?${context}">Запросить расчёт</a></div><p class="result" id="cart-result" role="status" hidden></p>
       <div class="logistics"><p class="stock">${liveStock>0 ? 'Доступно у поставщика: '+liveStock+' шт.' : ((variant?.backorder ?? item.backorder)?'Под заказ':'Наличие уточняется')}</p><p class="small">${e(logistics(item))}</p></div>
       <p class="small"><a class="text-link" href="#/delivery?${context}">Рассчитать доставку этого товара</a></p>
       ${warranty?'<p class="small">Гарантия · '+e(warranty)+'</p>':''}
@@ -706,19 +721,42 @@ function saveCart() {
   site.save('basket',cart);
   document.querySelector('#cart-count').textContent = cart.reduce((sum,row)=>sum+row.qty,0);
 }
+const cartLimit = row => Math.min(row.cap || 999,999);
+const cartItemDetails = row => [row.variant,row.sku?'Арт. '+row.sku:''].filter(Boolean).join(' · ');
+
+function updateCartQuantity(input, value) {
+  const row = cart[Number(input.dataset.qty)];
+  if (!row) return;
+  row.qty = Math.max(1,Math.min(cartLimit(row),Math.trunc(value)||1));
+  input.value = row.qty;
+  saveCart();
+  const line = input.closest('.cart-row');
+  line.querySelector('[data-cart-step="-1"]').disabled = row.qty<=1;
+  line.querySelector('[data-cart-step="1"]').disabled = row.qty>=cartLimit(row);
+  line.querySelector('.line-total').textContent = rowAmount(row);
+  document.querySelector('#basket-total').textContent = furnitureTotal();
+}
+
 function cartPage() {
-  if (!cart.length) return page('Корзина','<p class="intro">Добавьте мебель из каталога.</p><a class="btn" href="#/catalog">В каталог</a>');
+  const catalog = catalogOrigin(site.session('basket-origin','')) || '#/catalog';
+  if (!cart.length) return page('Корзина','<p class="intro">Добавьте мебель из каталога.</p><a class="btn" href="'+e(catalog)+'">В каталог</a>');
   return page('Корзина',`<div class="cart-layout"><section aria-label="Товары">${cart.map((row,i)=>`<div class="cart-row">
-      ${photo(row.image || '')}<div><a href="#/product/${row.id}">${e(row.name)}</a><p class="small">${e(row.variant||row.sku||'')} · ${money(row.price)}${row.price!=null?' за шт.':''}</p></div>
-      <input type="number" class="field" min="1" max="${row.cap || 999}" step="1" value="${row.qty}" data-qty="${i}" aria-label="Количество — ${e(row.name)}"><strong class="line-total" aria-live="polite">${rowAmount(row)}</strong><button data-remove="${i}">Убрать</button>
+      <div class="cart-photo">${photo(row.image || '')}</div><div class="cart-item"><a href="#/product/${row.id}">${e(productTitle(row.name))}</a>
+        ${cartItemDetails(row)?'<p class="small">'+e(cartItemDetails(row))+'</p>':''}<p class="small">${money(row.price)}${row.price!=null?' за шт.':''}</p></div>
+      <div class="cart-quantity"><label class="field-label" for="cart-qty-${i}">Количество</label><div class="cart-stepper">
+        <button type="button" data-cart-step="-1" aria-label="Уменьшить количество" ${row.qty<=1?'disabled':''}>−</button>
+        <input type="number" class="field" id="cart-qty-${i}" min="1" max="${cartLimit(row)}" step="1" inputmode="numeric" value="${row.qty}" data-qty="${i}">
+        <button type="button" data-cart-step="1" aria-label="Увеличить количество" ${row.qty>=cartLimit(row)?'disabled':''}>+</button>
+      </div></div>
+      <strong class="line-total" aria-live="polite">${rowAmount(row)}</strong><button class="cart-remove" type="button" data-remove="${i}">Убрать</button>
       </div>`).join('')}</section>
-      <aside class="panel"><h2>Получение заказа</h2><p class="small">Город: ${e(city)}. Срок, доступность и услуги подтверждаются для вашего заказа.</p>
+      <aside class="panel cart-summary"><h2>Итого по мебели</h2><p class="small">Город: ${e(city)}. В расчёте подтвердим наличие, сроки и стоимость услуг.</p>
       <div class="summary"><div><span>Мебель</span><strong id="basket-total" aria-live="polite">${furnitureTotal()}</strong></div><div><span>Доставка, подъём и сборка</span><span>По запросу</span></div></div>
-      <a class="btn" href="#/checkout">${hasBackend?'Запросить поставку':'Запросить поставку по почте'}</a></aside></div>`);
+      <div class="actions"><a class="btn" href="#/checkout">Запросить расчёт</a><a class="text-link" href="${e(catalog)}">Продолжить подбор</a></div></aside></div>`);
 }
 
 function transportNote() {
-  return hasBackend ? '' : '<p class="request-note">После заполнения откроется черновик письма. Отправьте его из своей почты, чтобы менеджер получил запрос.</p>';
+  return hasBackend ? '' : '<p class="request-note">Запрос отправляется по почте. Откройте готовое письмо или скопируйте текст, чтобы отправить его из своей почты.</p>';
 }
 
 function contactFields() {
@@ -728,13 +766,13 @@ function contactFields() {
 }
 function checkoutPage() {
   if (!cart.length) return cartPage();
-  return page(hasBackend?'Запрос поставки':'Запрос поставки по почте',`<div class="project-demo checkout"><form id="request-form" data-kind="order" class="panel">${transportNote()}
+  return page('Запрос расчёта',`<div class="project-demo checkout"><form id="request-form" data-kind="order" class="panel">${transportNote()}
     <label><span class="field-label">Город</span><input class="field" name="city" value="${e(city)}" required maxlength="80"></label>
     <label><span class="field-label">Адрес доставки</span><input class="field" name="address" maxlength="250" autocomplete="street-address"></label>
     <label><span class="field-label">Дополнительные услуги</span><select class="field" name="delivery"><option>Доставка</option><option>Доставка и сборка</option><option>Доставка, подъём и сборка</option><option>Самовывоз по согласованию</option></select></label>
     ${contactFields()}<button class="btn" type="submit">${hasBackend?'Отправить запрос':'Открыть письмо с запросом'}</button>
     <p class="small">Стоимость услуг и способ оплаты согласует менеджер.</p><p class="result" role="status" hidden></p></form>
-    <aside class="panel"><h2>Состав запроса</h2><div class="summary">${cart.map((row)=>`<div><span>${e(productTitle(row.name))}${row.variant?' · '+e(row.variant):''} × ${row.qty}</span><span>${rowAmount(row)}</span></div>`).join('')}<div><span>Мебель</span><strong>${furnitureTotal()}</strong></div><div><span>Доставка и другие услуги</span><span>По запросу</span></div></div></aside></div>`,[['Корзина','#/cart']]);
+    <aside class="panel cart-summary"><h2>Состав запроса</h2><div class="summary">${cart.map((row)=>`<div><span>${e(productTitle(row.name))} × ${row.qty} шт.${cartItemDetails(row)?'<small>'+e(cartItemDetails(row))+'</small>':''}</span><span>${rowAmount(row)}</span></div>`).join('')}<div><span>Мебель</span><strong>${furnitureTotal()}</strong></div><div><span>Доставка и другие услуги</span><span>По запросу</span></div></div></aside></div>`,[['Корзина','#/cart']]);
 }
 
 let kitPreferences = site.session('kit-preferences',{});
@@ -1326,6 +1364,23 @@ main.addEventListener('click', async (event)=>{
   const control=event.target.closest('button');
   if (!control) return;
   const {photo, add, remove, scroll} = control.dataset;
+  if (control.dataset.cartStep) {
+    const input = control.closest('.cart-stepper').querySelector('[data-qty]');
+    updateCartQuantity(input,input.valueAsNumber+Number(control.dataset.cartStep));
+    return;
+  }
+  if (control.hasAttribute('data-copy-request')) {
+    const text = control.closest('.result').querySelector('.request-copy-text');
+    try {
+      await navigator.clipboard.writeText(text.value);
+      control.textContent='Текст скопирован';
+    } catch {
+      text.hidden=false;
+      text.focus();
+      text.select();
+    }
+    return;
+  }
   if (control.dataset.projects) {
     const track = control.closest('.project-carousel').querySelector('.project-track');
     const step = track.firstElementChild.getBoundingClientRect().width + (parseFloat(getComputedStyle(track).columnGap) || 0);
@@ -1362,6 +1417,8 @@ main.addEventListener('click', async (event)=>{
     next?.focus();
   }
   if (!add) return;
+  const origin = catalogOrigin(getRoute().args.get('from'));
+  const result = main.querySelector('#cart-result');
   const item = productById.get(Number(add));
   const choice = Number(document.querySelector('#product-option')?.value || 0);
   const data = await site.getDetails(item.id).catch(()=>null);
@@ -1370,11 +1427,17 @@ main.addEventListener('click', async (event)=>{
   const key = item.id + ':' + choice;
   const row=cart.find(r=>r.key===key);
   const cap = variation?.stock ?? option?.[3] ?? (hasBackend && !data?.[2]?.length ? data?.[5] : null) ?? 999;
-  if (!cap) return;
+  if (!cap || row?.qty>=Math.min(cap,999)) {
+    if (result) {
+      result.hidden=false;
+      result.textContent=cap ? 'В корзине уже максимально доступное количество.' : 'Товар сейчас недоступен.';
+    }
+    return;
+  }
   if (row) row.qty=Math.min(cap,999,row.qty+1);
   else cart.push({key,id:item.id,choice,variant:option?.[1],name:item.name,sku:item.sku,image:variation?.image || item.image,price:priceOf(item,option,variation),qty:1,cap});
+  if (origin) site.save('basket-origin',origin);
   saveCart();
-  const result=main.querySelector('#cart-result');
   if (result) {
     result.hidden=false;
     result.innerHTML='Товар добавлен. <a class="text-link" href="#/cart">Открыть корзину</a>';
@@ -1405,19 +1468,17 @@ main.addEventListener('change',event=>{
     const choice=Number(element.value);
     site.save('selected-'+element.dataset.id,choice);
     const button = main.querySelector('[data-add]');
+    const quote = main.querySelector('[data-item-quote]');
     const status = main.querySelector('#variant-status');
     if (button) button.disabled = true;
+    if (quote) {
+      quote.setAttribute('href','#/project?product='+element.dataset.id+(choice?'&variant='+choice:''));
+      prepareLinks(quote.parentElement);
+    }
     if (status && choice) {status.hidden=false;status.textContent='Загружаем фото и цену варианта…';}
     render().then(()=>document.querySelector('#product-option')?.focus({preventScroll:true}));
   }
-  if ('qty' in element.dataset) {
-    const selected=cart[Number(element.dataset.qty)];
-    selected.qty=Math.max(1,Math.min(selected.cap || 999,Math.trunc(element.valueAsNumber)||1));
-    element.value = selected.qty;
-    saveCart();
-    element.closest('.cart-row').querySelector('.line-total').textContent = rowAmount(selected);
-    document.querySelector('#basket-total').textContent = furnitureTotal();
-  }
+  if ('qty' in element.dataset) updateCartQuantity(element,element.valueAsNumber);
 });
 
 main.addEventListener('input',event=>{
@@ -1446,7 +1507,12 @@ async function toEncoded(file) {
 }
 function mailBody(kind, data) {
   const lines = [requestTitle(kind,data),'Имя: '+data.name,'Контакт: '+data.contact,'Город: '+data.city];
-  if (kind==='order') lines.push('Адрес: '+(data.address||'уточняется'),'Получение: '+data.delivery,'', ...cart.map(r=>[r.name,r.variant,r.sku,r.qty+' шт.'].filter(Boolean).join(' · ')));
+  if (kind==='order') {
+    lines.push('Адрес: '+(data.address||'уточняется'),'Получение: '+data.delivery,
+      ...cart.map(row=>[productTitle(row.name),cartItemDetails(row),row.qty+' шт.',rowAmount(row)].filter(Boolean).join(' · ')),
+      'Мебель по расчёту сайта: '+furnitureTotal(),
+      'Просьба подтвердить наличие, итоговую стоимость и срок поставки с учётом услуг.');
+  }
   else {
     if (data.seats) lines.push('Рабочих мест: '+data.seats);
     if (data.date) lines.push((data.product?'Желаемая дата: ':'Дата готовности офиса после монтажа: ')+data.date.split('-').reverse().join('.'));
@@ -1463,7 +1529,7 @@ function mailBody(kind, data) {
   }
   return lines.filter(Boolean).join('\n');
 }
-const requestTitle=(kind,data)=>kind==='order'?'Запрос поставки мебели':data.topic==='delivery'?'Запрос расчёта доставки':'Запрос сметы';
+const requestTitle=(kind,data)=>kind==='order'?'Запрос расчёта мебели':data.topic==='delivery'?'Запрос расчёта доставки':'Запрос сметы';
 
 main.addEventListener('submit',async(event)=>{
   const form=event.target;
@@ -1511,9 +1577,15 @@ main.addEventListener('submit',async(event)=>{
   else if (form.dataset.drawnPlan) data.roomPlan=quotePlan;
   const status=form.querySelector('.result');
   if (!hasBackend) {
-    const href=site.mail(requestTitle(kind,data),mailBody(kind,data));
+    const body = mailBody(kind,data);
+    const href = site.mail(requestTitle(kind,data),body);
     status.hidden=false;
-    status.innerHTML='Откроется почтовое приложение. <a class="text-link" href="'+e(href)+'">Открыть письмо</a>';
+    status.innerHTML='Письмо готово. Отправьте его на <span class="request-address">'+e(site.email)+'</span>.'+
+      '<span class="request-actions"><a class="text-link" href="'+e(href)+'">Открыть письмо</a>'+
+      '<button type="button" class="text-link" data-copy-request>Скопировать текст</button></span>'+
+      '<textarea class="field request-copy-text" rows="7" aria-label="Текст запроса" readonly hidden></textarea>';
+    status.querySelector('textarea').value=body;
+    status.scrollIntoView({block:'nearest'});
     location.href=href;
     return;
   }
