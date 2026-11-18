@@ -7,6 +7,7 @@ let catalog;
 let catalogItems;
 let catalogFacts;
 let correctedParts;
+let finishVocabulary;
 let officeConfig = {};
 const seatPresets = [1,4,8];
 let hasBackend = false;
@@ -19,11 +20,13 @@ const catalogPagesPerFile = 8;
 const smallCatalogBucket = 32;
 const positions = new Map();
 let previousRoute = currentRoute();
+let pendingTypeSwitch;
 
 async function loadCatalogFacts() {
   if (catalogFacts) return;
   catalogFacts = await site.getCatalogFacts();
   correctedParts = new Set(catalogFacts.parts);
+  finishVocabulary = new Map(catalogFacts.finishes.map(label=>[searchWords(label).join(' '),label]));
 }
 const catalogDimensions = (id, dimensions) => catalogFacts && Object.hasOwn(catalogFacts.dimensions,id) ?
   catalogFacts.dimensions[id] : dimensions;
@@ -282,6 +285,8 @@ function matchesSeries(item,term) {
 }
 const selectedCategory = (key) => catBySlug.get(key) || catById.get(Number(key));
 const selectedSeries = key => collectionCategory(selectedCategory(key));
+const scopeTypes = category => !category ? Object.keys(productTypes) : catalogFacts?.categoryTypes ?
+  catalogFacts.categoryTypes[category.id] || [] : collectionsById.get(category.id)?.types || Object.keys(productTypes);
 const catalogLink = (settings, patch = {}) => {
   const values = new URLSearchParams(settings);
   for (const [key,value] of Object.entries(patch)) if (value) values.set(key,value); else values.delete(key);
@@ -384,10 +389,6 @@ const catalogDepartments = [
   ['Металлическая мебель','metallicheskaya-mebel','2025/11/metallicheskaya-mebel-i-sejfy-600x488.jpg'],
   ['Обеденная зона','mebel-dlya-ofisnoj-kuhni','2025/11/obedennaya-zona-600x489.jpg']
 ];
-const catalogShortcuts = {
-  28: ['stoly-ofisnye','stoly-ofisnye-s-tumboj','stoly-ofisnye-uglovye','stoly-na-metallokarkase','mebel-riva'],
-  4812: ['stol-rukovoditelya']
-};
 
 function showDepartmentIndex(settings) {
   return !['c','view','q','t','p','sort',...filterFields].some(key=>settings.get(key));
@@ -425,17 +426,12 @@ function catalogDepartmentsPage() {
 }
 
 function catalogDepartmentOptions(section) {
-  const classes = section.groups.length>1 ? '<section class="catalog-department-options"><h2>Классы мебели</h2>'+
+  return section.groups.length>1 ? '<section class="catalog-department-options"><h2>Классы мебели</h2>'+
     '<div class="catalog-class-grid">'+section.groups.map(group=>{
       const sample = group.items.find(item=>item.cover && item.count);
       return catalogBrowseCard(group.label,sample?.cover,collectionNavigation(catById.get(group.id)),
         'Коллекций: '+catalogNumber.format(group.items.length));
     }).join('')+'</div></section>' : '';
-  const shortcuts = (catalogShortcuts[section.id] || []).map(slug=>catBySlug.get(slug)).filter(item=>item && !item.empty);
-  return classes+(shortcuts.length?'<section class="catalog-department-options"><h2>Готовые подборки</h2>'+
-    '<nav class="quick-categories" aria-label="Готовые подборки">'+shortcuts.map(entry=>
-      '<a class="chip" href="'+e(collectionNavigation(entry))+'">'+e(entry.name)+'</a>').join('')+
-    '</nav></section>':'');
 }
 
 const lookalikeLetters = [...'авсенкмортху'];
@@ -462,12 +458,29 @@ function findCollections(value, section, tier) {
   return rows.filter(row=>row.rank).sort((a,b)=>b.rank-a.rank);
 }
 
+function collectionSupports(entry, {types,finish}) {
+  return (!types.size || scopeTypes(catById.get(entry.item.id)).some(type=>types.has(type))) &&
+    (!finish || (catalogFacts?.collectionFinishes[entry.item.id] || []).some(index=>catalogFacts.finishes[index]===finish));
+}
+
 function collectionSearch(value) {
   const parts = searchInputParts(value);
   const intent = Boolean(parts.types.size || parts.size);
   const phrase = intent ? parts.terms.join(' ') : value;
   const matches = collectionSearchKey(phrase).length>=2 ? findCollections(phrase).filter(({item})=>
-    !parts.types.size || item.types.some(type=>parts.types.has(type))) : [];
+    !parts.types.size || scopeTypes(catById.get(item.id)).some(type=>parts.types.has(type))) : [];
+  if (!matches.some(row=>row.rank===3) && finishVocabulary) {
+    const words = parts.terms;
+    for (let length=words.length-1; length>0; length--) {
+      for (let from=0; from+length<=words.length; from++) {
+        const finish = finishVocabulary.get(words.slice(from,from+length).join(' '));
+        if (!finish) continue;
+        const name = [...words.slice(0,from),...words.slice(from+length)].join(' ');
+        const options = findCollections(name).filter(entry=>collectionSupports(entry,{...parts,finish}));
+        if (options.length) return {value,parts:{...parts,finish},phrase:name,intent:true,matches:options};
+      }
+    }
+  }
   return {value,parts,phrase,intent,matches};
 }
 
@@ -482,7 +495,7 @@ function collectionMatchLink(category, parts) {
     const range = catalogRanges[i+1];
     return [[range.low,value],[range.high,value]];
   }));
-  return catalogLink('',{c:category.slug,t:type,...bounds});
+  return catalogLink('',{c:category.slug,t:type,finish:parts.finish,...bounds});
 }
 
 function collectionCard(entry, department, parts) {
@@ -503,9 +516,8 @@ function collectionOverview(settings, selected) {
   const title = tier ? selected.name : section?.name || 'Коллекции офисной мебели';
   const query = (settings.get('cq') || '').trim().slice(0,100);
   const pick = settings.get('pick');
-  const parts = pick ? searchInputParts(pick.slice(0,120)) : null;
-  const rows = findCollections(query,section,tier).filter(({item})=>
-    !parts?.types.size || item.types.some(type=>parts.types.has(type)));
+  const parts = pick ? collectionSearch(pick.slice(0,120)).parts : null;
+  const rows = findCollections(query,section,tier).filter(entry=>!parts || collectionSupports(entry,parts));
   const size = 24;
   const pages = Math.max(1,Math.ceil(rows.length/size));
   const current = Math.max(1,Math.min(pages,parseInt(settings.get('cp'),10) || 1));
@@ -688,13 +700,20 @@ function catalogPage(settings, preview, unavailable) {
   const children = selected ? (catChildren.get(selected.id) || []).filter(child=>!child.empty) : [];
   const sections = children.length>0 && children.length<=12
     ? '<nav class="catalog-subsections" aria-label="Подразделы"><span>Подразделы</span>'+children.map(entry=>'<a class="text-link" href="'+e(toCatalog(categoryPatch(entry)))+'">'+e(entry.name)+'</a>').join('')+'</nav>' : '';
-  const collectionEntry = collectionsById.get(collection?.id);
   const queryCollections = collectionSearchKey(query).length>=2 && findCollections(query).length>0;
   const collectionsLink = collection ? collectionNavigation(catById.get(collection.parent)) :
     catalogLink('',{view:'collections',cq:query});
-  const collectionTypes = ['tables','pedestals','cabinets','shelving','chairs','sofas'];
-  const availableTypes = collectionEntry ? collectionTypes.filter(type=>collectionEntry.types.includes(type)) : Object.keys(productTypes);
-  const typeTabs = availableTypes.length ? '<nav class="quick-categories" aria-label="Тип мебели">'+['',...availableTypes].map(key=>'<a class="chip" href="'+
+  const typeOrder = collection ? ['tables','pedestals','cabinets','shelving','chairs','sofas'] : Object.keys(productTypes);
+  const typeScope = collection || selected;
+  const scoped = scopeTypes(typeScope);
+  const tabRanges = collection || seriesCategory ? ranges.slice(0,1) : ranges;
+  const constrainedTypes = catalogItems && (finish || series || query || tabRanges.some(hasBounds))
+    ? new Set(catalogResults(settings,{...resultOptions,selected:typeScope,type:'',part:'furniture',purpose:'',shape:'',
+      ranges:tabRanges}).map(item=>item.type))
+    : null;
+  const availableTypes = typeOrder.filter(key=>scoped.includes(key) &&
+    (!constrainedTypes || key===type || constrainedTypes.has(key)));
+  const typeTabs = availableTypes.length ? '<nav class="quick-categories" aria-label="Тип мебели">'+['',...availableTypes].map(key=>'<a class="chip" data-catalog-type href="'+
     e(toCatalog({...(collection?{c:collection.slug}:{}),t:key,use:null,shape:null,k:null,p:null,
       ...(key!==type && (collection || seriesCategory)?{...Object.fromEntries(dimensionFields.map(field=>[field,null])),unknown:null}:{}),
       view:selected ? settings.get('view') : 'products'}))+'" '+
@@ -760,12 +779,12 @@ function catalogOrigin(address) {
     catalogLink(catalogSettings(getRoute(address).args)) : '';
 }
 
-function itemPage(item, detail, variant, origin) {
+function itemPage(item, detail, variant, origin, choice) {
   const [images=[],specs=[],opts=[],description=''] = detail || [];
   const baseImages = images.length ? images : item.image ? [item.image] : [];
   const matchingPhoto = variant?.image && variant.image!==baseImages[0] ? variant.image : '';
   const pics = matchingPhoto ? [...new Set([matchingPhoto,...baseImages])] : baseImages;
-  const selected = opts.find((option)=>option[0] === site.session('selected-'+item.id, null));
+  const selected = opts.find(option=>option[0] === choice);
   const dimensions = catalogFacts ? dimensionsLabel(item.dimensions) : '';
   const values = [item.sku ? 'Арт. '+item.sku : '',dimensions].filter(Boolean);
   const context = 'product='+item.id+(selected?'&variant='+selected[0]:'');
@@ -1245,6 +1264,14 @@ function navigate(address) {
   onRouteChange();
 }
 
+function replaceRoute(address) {
+  const position = positions.get(previousRoute);
+  history.replaceState(pathRouting ? {...history.state,grandRoute:address} : history.state,'',
+    pathRouting ? hrefFor(address) : address);
+  if (position!==undefined) positions.set(address,position);
+  previousRoute=address;
+}
+
 const catalogueById = new Map();
 const loadConfig=site.config.then(config=>{officeConfig=config;});
 const catalogPageNumber = (settings,total) => Math.min(total,Math.max(1,parseInt(settings.get('p') || '1',10) || 1));
@@ -1326,7 +1353,18 @@ async function loadProjectItems(product) {
   await Promise.all(ids.filter(id=>!productById.has(id)).map(loadDetail));
 }
 
-async function render(move = false) {
+function productChoiceFor(id, args, options) {
+  if (args.has('variant')) return Number(args.get('variant'));
+  const origin = catalogOrigin(args.get('from'));
+  const finish = origin && getRoute(origin).args.get('finish');
+  if (finish && finishesFor(id).some(label=>finishKey(label)===finishKey(finish))) {
+    const matches = options.filter(option=>finishKey(option[1])===finishKey(finish));
+    if (matches.length===1) return matches[0][0];
+  }
+  return site.session('selected-'+id,null);
+}
+
+async function render(move = false, typeSwitch) {
   const current = ++revision;
   const {key,id,args} = getRoute();
   const product = Number(id);
@@ -1334,7 +1372,7 @@ async function render(move = false) {
   const example = key==='project' ? site.projects.find(item=>item.id===args.get('case')) : null;
   const useKit = key==='project' && args.get('section')==='kit' && !target;
   const drawnPlan=key==='project' && !target && !useKit && args.get('plan')==='1' && quotePlan?.v===2 ? quotePlan : null;
-  let details, variant, quoteOption;
+  let details, variant, quoteOption, productChoice, correctedRoute;
   let catalogOptions, preview, catalogError=false;
 
   document.querySelectorAll('[data-nav]').forEach(a=> a.dataset.nav===key ? a.setAttribute('aria-current','page'):a.removeAttribute('aria-current'));
@@ -1345,6 +1383,14 @@ async function render(move = false) {
     catalogOptions=catalogSettings(args);
     try {
       await Promise.all([loadCollectionDirectory(),loadCatalogFacts()]);
+      const category = selectedCategory(catalogOptions.get('c'));
+      if (category && catalogOptions.has('t') && !scopeTypes(category).includes(catalogOptions.get('t'))) {
+        catalogOptions.delete('t');
+        catalogOptions.delete('p');
+        catalogOptions.delete('use');
+        catalogOptions.delete('shape');
+        correctedRoute=catalogLink(catalogOptions);
+      }
       preview=await loadCatalog(catalogOptions);
     } catch { catalogError=true; }
   } else if (key==='project' || key==='planner') {
@@ -1356,10 +1402,11 @@ async function render(move = false) {
   } else if (key==='product') {
     await loadCatalogFacts().catch(()=>null);
     [details] = await Promise.all([loadDetail(product),loadCollectionDirectory(),loadConfig]);
-    const selected = site.session('selected-'+product,null);
-    if (details?.[2]?.some(item=>item[0]===selected)) variant = await site.variation(product,selected);
+    productChoice=productChoiceFor(product,args,details?.[2] || []);
+    if (details?.[2]?.some(item=>item[0]===productChoice)) variant = await site.variation(product,productChoice);
   } else await loadConfig;
   if (current!==revision) return;
+  if (correctedRoute) replaceRoute(correctedRoute);
   cleanupPlanner?.();
   cleanupPlanner=null;
   if (target) quoteOption=details?.[2]?.find(option=>option[0]===Number(args.get('variant')));
@@ -1372,7 +1419,7 @@ async function render(move = false) {
   } else if (key==='planner') {
     main.innerHTML=page('Планировщик офиса','<p class="intro">Задайте размеры комнаты, расставьте мебель и отправьте схему на расчёт.</p><div class="planner-grid" id="office-planner"></div>');
     cleanupPlanner=mountPlanner(args);
-  } else if (key==='product' && productById.has(product)) main.innerHTML=itemPage(productById.get(product),details,variant,args.get('from'));
+  } else if (key==='product' && productById.has(product)) main.innerHTML=itemPage(productById.get(product),details,variant,args.get('from'),productChoice);
   else if (key==='cart') main.innerHTML=cartPage();
   else if (key==='checkout') main.innerHTML=checkoutPage();
   else if (key==='delivery') main.innerHTML=deliveryPage(productById.get(target),quoteOption);
@@ -1386,8 +1433,11 @@ async function render(move = false) {
     form?.focus({preventScroll:true});
     form?.scrollIntoView({block:'start'});
   } else if (move) {
-    main.focus({preventScroll:true});
-    window.scrollTo(0,positions.get(currentRoute()) || 0);
+    const typeNav = typeSwitch && main.querySelector('.catalog-type-tabs nav');
+    const focus = typeSwitch?.keyboard && typeNav?.querySelector('[aria-current="page"]');
+    (focus || main).focus({preventScroll:true});
+    if (typeNav) window.scrollTo(0,window.scrollY+typeNav.getBoundingClientRect().top-typeSwitch.top);
+    else window.scrollTo(0,positions.get(currentRoute()) || 0);
   }
   prepareLinks(main);
   if (pathRouting) {
@@ -1459,6 +1509,11 @@ main.addEventListener('toggle',event=>{
 window.addEventListener('resize',()=>main.querySelectorAll('.project-track').forEach(syncCarousel));
 
 main.addEventListener('click', async (event)=>{
+  const tab=event.target.closest('[data-catalog-type]');
+  if (tab && event.button===0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+    const route=tab.dataset.route || tab.getAttribute('href');
+    if (route!==currentRoute()) pendingTypeSwitch={route,top:tab.closest('nav').getBoundingClientRect().top,keyboard:event.detail===0};
+  }
   const control=event.target.closest('button');
   if (!control) return;
   const {photo, add, remove, scroll} = control.dataset;
@@ -1566,6 +1621,12 @@ main.addEventListener('change',event=>{
   if (element.id==='product-option') {
     const choice=Number(element.value);
     site.save('selected-'+element.dataset.id,choice);
+    const {args} = getRoute();
+    const origin = catalogOrigin(args.get('from'));
+    if (args.has('variant') || origin && getRoute(origin).args.has('finish')) {
+      args.set('variant',String(choice));
+      replaceRoute('#/product/'+element.dataset.id+'?'+args);
+    }
     const button = main.querySelector('[data-add]');
     const quote = main.querySelector('[data-item-quote]');
     const status = main.querySelector('#variant-status');
@@ -1721,7 +1782,7 @@ async function showSearchSuggestions() {
   const current = ++searchRevision;
   const value = searchInput.value.trim();
   if (collectionSearchKey(value).length<2) return hideSearchSuggestions();
-  await loadCollectionDirectory();
+  await Promise.all([loadCollectionDirectory(),loadCatalogFacts().catch(()=>null)]);
   if (current!==searchRevision || !searchArea.contains(document.activeElement)) return;
   const search = collectionSearch(value);
   const {matches} = search;
@@ -1762,7 +1823,7 @@ searchSuggestions.addEventListener('click',event=>{
 document.querySelector('#global-search').addEventListener('submit',async event=>{
   event.preventDefault();
   const value = searchInput.value.trim();
-  if (collectionSearchKey(value).length>=2) await loadCollectionDirectory();
+  if (collectionSearchKey(value).length>=2) await Promise.all([loadCollectionDirectory(),loadCatalogFacts().catch(()=>null)]);
   if (value!==searchInput.value.trim()) return;
   const search = collectionSearch(value);
   const exact = search.matches.filter(row=>row.rank===3);
@@ -1851,8 +1912,10 @@ function onRouteChange() {
   if (address===previousRoute || !pathRouting && address==='#main') return;
   positions.set(previousRoute,window.scrollY);
   previousRoute=address;
+  const typeSwitch=pendingTypeSwitch?.route===address ? pendingTypeSwitch : null;
+  pendingTypeSwitch=null;
   hideSearchSuggestions();
-  render(true);
+  render(true,typeSwitch);
 }
 window.addEventListener('hashchange',onRouteChange);
 if (pathRouting) {

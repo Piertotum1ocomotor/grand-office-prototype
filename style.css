@@ -595,7 +595,7 @@ select.field[multiple],select.field[size]:not([size="1"]){appearance:auto;backgr
 @media(min-width:961px){.filter-actions{position:sticky;bottom:0;z-index:1}}
 @media(max-width:960px){
   .catalog-sidebar .filters-grid{grid-template-rows:minmax(0,1fr) auto;max-height:58dvh}
-  .catalog-filter-fields{overflow:auto;overscroll-behavior:contain;padding-inline:3px}
+  .catalog-filter-fields{align-self:stretch;min-height:0;overflow:auto;overscroll-behavior:contain;padding-inline:3px}
   .filter-actions{padding-block:8px 3px}
 }
 .catalog-sidebar .catalog-directory nav{max-height:385px}

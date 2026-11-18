@@ -112,6 +112,7 @@ def main():
     shards = {}
     dimensions, parts, finish_keys, colour_labels = {}, [], {}, {}
     section_finishes = defaultdict(set)
+    category_types = defaultdict(set)
     affected_types = set()
     for row in catalog['items']:
         identifier, name = row[:2]
@@ -137,6 +138,9 @@ def main():
             while ident in parents and ident not in scopes:
                 scopes.add(ident)
                 ident = parents[ident]
+        if row[10]:
+            for ident in scopes:
+                category_types[ident].add(row[10])
         collections = scopes & series
         if not collections:
             continue
@@ -152,6 +156,7 @@ def main():
         'dimensions': dimensions,
         'parts': parts,
         'affectedTypes': sorted(affected_types),
+        'categoryTypes': {identifier: sorted(values) for identifier, values in sorted(category_types.items())},
         'finishes': [colour_labels[key] for key in keys],
         'productFinishes': {identifier: sorted(index[key] for key in values) for identifier, values in finish_keys.items()},
         'collectionFinishes': {identifier: sorted(index[key] for key in values) for identifier, values in section_finishes.items()},
