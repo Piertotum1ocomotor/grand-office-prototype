@@ -185,7 +185,7 @@ dd{margin:0}
 #search-collections a:is(:hover,:focus-visible){background:var(--soft);color:var(--brand-dark)}
 #search-collections a small{color:var(--muted);font-size:12px}
 #search-collections .search-all-collections{margin-top:4px;padding-top:9px;border-top:1px solid var(--line);color:var(--brand-dark)}
-.home-collections-link{display:inline-block;margin-top:14px}
+.home-catalog-links .btn{min-height:43px}
 .hero{grid-template-columns:47% 53%;min-height:440px}
 .hero-copy{padding:clamp(30px,4vw,63px)}
 .hero h1{font-size:clamp(38px,4.35vw,62px)}
@@ -303,7 +303,23 @@ main:focus{outline:none}
 .catalog-shell .filters-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 .kit-hero img{max-height:370px;min-height:270px;object-position:50% 57%}
 .kit-hero .actions{align-items:center;gap:13px}
-.home-delivery{margin-bottom:58px}
+.home-company{padding:clamp(18px,3vw,40px);border-radius:var(--radius);background:#f0eae4}
+.company-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.company-grid>div{display:block;background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:clamp(12px,1.6vw,21px)}
+.company-grid h3{font-size:clamp(18px,1.7vw,24px)}
+.company-grid p,.company-grid dd{margin-top:7px;color:var(--muted)}
+.company-intro{max-width:72ch}
+.company-figures{margin-block:22px}
+.company-figures dt{font-size:clamp(20px,2.4vw,34px);line-height:1.1;letter-spacing:-.035em;color:var(--brand-dark)}
+.project-design{margin-block:22px}
+.project-design p{max-width:66ch;margin-bottom:9px;color:var(--muted)}
+.service-details p+p{margin-top:10px}
+@media(max-width:1000px){
+ .company-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:480px){
+ .home-company .company-grid{grid-template-columns:1fr}
+}
 .service-facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:18px 0 0}
 .service-facts>div{display:block;border:1px solid var(--line);background:var(--paper);padding:16px;border-radius:10px}
 .service-facts dd{margin-top:7px;color:var(--brand-dark);font-size:clamp(19px,2.8vw,29px)}
@@ -370,7 +386,6 @@ main:focus{outline:none}
  .carousel-buttons .btn{min-height:37px}
  .contact-map{height:320px}
  .kit-hero img,.about-feature img{min-height:0;max-height:244px}
- .home-delivery{margin-bottom:34px}
  .service-steps{grid-template-columns:1fr}
  .kit-row{grid-template-columns:minmax(0,1fr) 78px}
  .kit-row input.field{padding-inline:7px}

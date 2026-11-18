@@ -53,16 +53,37 @@ function serviceFacts() {
     <div><dt>Стандартная сборка</dt><dd>${rates.assemblyPercent}%</dd><dd class="fact-description">От стоимости мебели. Дату согласуем.</dd></div></dl>`;
 }
 
+const companyBenefits = [
+  ['С 2019 года','Команда работает на рынке офисной мебели более 15 лет. До основания «Гранд-Офиса» работала под другим брендом.'],
+  ['От замера до монтажа','Подготовим дизайн-проект, подберём мебель, доставим, соберём и расставим её по плану.'],
+  ['Собственный склад в Перми','Работаем напрямую с российскими и европейскими производителями и комплектуем заказы на своём складе.'],
+  ['Гарантия до двух лет','Срок зависит от модели. Помогаем с гарантийным и постгарантийным обслуживанием.']
+];
+const companyFigures = [
+  ['Более 15 лет','опыта команды на рынке'],
+  ['Более 30','контрактов с фабриками России и Европы'],
+  ['Более 500','реализованных проектов'],
+  ['Более 100 000 м²','оборудованных помещений']
+];
+const projectStages = [
+  ['Консультация','Уточняем задачи, бюджет, число рабочих мест и сроки переезда.'],
+  ['Замер и планировка','Изучаем план помещения, при необходимости выезжаем на замер. Предлагаем варианты зонирования и расстановки.'],
+  ['Подбор и смета','Подбираем серии, модели и отделку. Готовим коммерческое предложение с ценами и сроками.'],
+  ['Договор и предоплата','Согласуем условия оплаты и фиксируем сроки поставки в договоре.'],
+  ['Доставка и монтаж','Привозим, собираем и расставляем мебель по согласованному плану.'],
+  ['Сервис','Помогаем с гарантийными обращениями, обслуживанием и доукомплектацией офиса.']
+];
+const informationCards = rows => rows.map(([title,copy])=>'<div><h3>'+e(title)+'</h3><p>'+e(copy)+'</p></div>').join('');
+
 function home() {
   return `<div class="shell">
     <section class="hero" aria-labelledby="home-title">
       <div class="hero-copy"><p class="eyebrow">Пермь и Пермский край</p><h1 id="home-title">Офисная мебель и комплектация офисов</h1>
       <p>Мебель для рабочих мест, переговорных и кабинетов. Подберём, доставим и соберём.</p>
-      <div class="actions"><a class="btn" href="#/catalog">Выбрать мебель</a><a class="btn secondary" href="#/project">Рассчитать комплектацию</a></div>
-      <a class="text-link home-collections-link" href="#/catalog?view=collections">Коллекции мебели</a></div>
+      <div class="actions"><a class="btn" href="#/catalog">Выбрать мебель</a><a class="btn secondary" href="#/project">Рассчитать комплектацию</a></div></div>
       <div class="hero-photo">${photo('./assets/office.webp','Офис с деревянными столами и терракотовыми креслами','fetchpriority="high"')}</div>
     </section>
-    <section class="section"><div class="section-head"><h2>Мебель для офиса</h2><a class="text-link" href="#/catalog">Весь каталог</a></div>
+    <section class="section"><div class="section-head"><h2>Мебель для офиса</h2><div class="actions home-catalog-links"><a class="btn secondary" href="#/catalog?view=collections">Коллекции мебели</a><a class="text-link" href="#/catalog">Весь каталог</a></div></div>
       <div class="actions home-types"><a class="chip" href="#/catalog?t=tables">Столы</a><a class="chip" href="#/catalog?t=chairs">Кресла и стулья</a><a class="chip" href="#/catalog?t=cabinets">Шкафы</a><a class="chip" href="#/catalog?t=pedestals">Тумбы</a><a class="chip" href="#/catalog?t=shelving">Стеллажи</a></div>
       <div class="category-grid four">${site.startCategories.map(categoryCard).join('')}</div></section>
     <section class="project-feature kit-hero">${photo('./assets/riva-interior.webp','Пример рабочих мест с мебелью Riva в интерьере','loading="lazy" width="900" height="720"')}
@@ -71,7 +92,9 @@ function home() {
         <div class="actions"><a class="btn" href="#/project?section=kit">Собрать комплект</a><a class="btn secondary" href="#/planner">Открыть планировщик</a></div></div>
     </section>
     <section class="section"><div class="section-head"><h2>Наши проекты</h2><a class="text-link" href="#/projects">Все проекты</a></div>${projectShowcase()}</section>
-    <section class="section home-delivery"><div class="section-head"><h2>Доставка и сборка</h2><a class="text-link" href="#/delivery">Сроки и условия</a></div>${serviceFacts()}</section>
+    <section class="section"><div class="section-head"><h2>Доставка и сборка</h2><a class="text-link" href="#/delivery">Сроки и условия</a></div>${serviceFacts()}</section>
+    <section class="section home-company" aria-labelledby="home-company-title"><div class="section-head"><h2 id="home-company-title">Почему выбирают «Гранд-Офис»</h2><a class="text-link" href="#/about">О компании</a></div>
+      <div class="company-grid">${informationCards(companyBenefits)}</div></section>
     </div>`;
 }
 
@@ -754,8 +777,7 @@ function projectPage(target, option, example, qty, useKit, drawnPlan) {
   const planHelp = hasBackend ? 'Приложите план или ТЗ к запросу.' : 'Приложите план или ТЗ к письму перед отправкой.';
   const choices = seatPresets.includes(qty) ? seatPresets : [...seatPresets,qty];
   return `<div class="shell page">${crumbs([['Комплектация офисов']])}<section class="project-hero"><div class="copy"><h1>Комплектация офисов</h1><p class="intro">Подберём мебель, подготовим планировку и смету, организуем доставку и монтаж.</p><div class="actions"><button class="btn" data-scroll="project-form">Получить расчёт</button><a class="btn secondary" href="#/project?section=kit">Собрать комплект Riva</a></div><p class="small form-hint">${planHelp}</p></div>${photo('./assets/meeting.webp','Стол и кресла в переговорной')}</section>
-    <section class="section"><div class="section-head"><h2>Этапы комплектации</h2></div><div class="steps">
-    <div><h3>Задача и план</h3><p>Уточняем число мест, сроки, планировку и бюджет.</p></div><div><h3>Подбор и смета</h3><p>Согласуем модели, материалы, состав и стоимость поставки.</p></div><div><h3>Доставка и монтаж</h3><p>После согласования договора поставляем и монтируем мебель по графику.</p></div></div></section>
+    <section class="panel project-design"><h2>Бесплатный дизайн-проект офиса</h2><p>Пришлите план помещения или договоритесь с менеджером о замере. Покажем расстановку мебели до поставки и подготовим смету под ваш бюджет. Можно обсудить проект в нашем шоуруме.</p><a class="text-link" href="#/showroom">Спланировать визит</a></section>
     <div class="project-demo ${useKit?'kit-first':'quote-first'}"><section class="panel" id="kit-builder" tabindex="-1"><h2>Соберите комплект Riva</h2><p class="small">Выберите модели и количество. При смене числа мест количество столов и кресел пересчитывается.</p>
       <label class="field-label" for="set-count">Количество рабочих мест</label><select class="field" id="set-count">${choices.map(count=>`<option value="${count}" ${count===qty?'selected':''}>${seatsLabel(count)}</option>`).join('')}</select><div class="kit-choices">${kitRows(qty)}</div><div class="summary" id="estimate" aria-live="polite"></div>
       <div id="kit-availability"></div><p class="small" id="kit-count-note" aria-live="polite"></p>
@@ -776,6 +798,7 @@ function projectPage(target, option, example, qty, useKit, drawnPlan) {
       ${contactFields()}<button class="btn" type="submit">${hasBackend?'Отправить запрос':'Открыть письмо для расчёта'}</button>
       <p class="small">В смете подтвердим стоимость с услугами, наличие всей партии и дату завершения монтажа.</p>
       ${!hasBackend?'<p class="small">'+planHelp+'</p>':''}<p class="result" role="status" hidden></p></form></div>
+      <section class="section"><div class="section-head"><h2>Этапы комплектации</h2></div><div class="steps">${informationCards(projectStages)}</div></section>
       <section class="section"><div class="section-head"><h2>Выполненные проекты</h2><a class="text-link" href="#/projects">Все проекты</a></div><div class="actions"><a class="text-link" href="#/projects/sber">Клиентский зал Сбера</a></div></section>
     </div>`;
 }
@@ -873,9 +896,9 @@ function productRequestAttributes(item, option) {
 
 function deliveryPage(target, option) {
   return page('Доставка и сборка',`
-    <p class="intro">Доставляем мебель по Перми и Пермскому краю. Поставки в другие города рассчитываем по адресу, объёму и сроку заказа.</p>
+    <p class="intro">Доставляем мебель по России. В Перми и Пермском крае доставку и монтаж организует наша сервисная служба. Стоимость поставки в другой город рассчитываем по адресу и объёму заказа.</p>
     ${serviceFacts()}
-    <section class="section service-details"><div><h2>Ориентиры по срокам</h2><dl class="delivery-timing">${site.delivery.map(([label,time])=>`<div><dt>${e(label)}</dt><dd>${e(time)}</dd></div>`).join('')}</dl><p class="small">Интервалы зависят от наличия и объёма заказа. Даты доставки и монтажа согласуем при оформлении.</p></div>
+    <section class="section service-details"><div><h2>Ориентиры по срокам</h2><dl class="delivery-timing">${site.delivery.map(([label,time])=>`<div><dt>${e(label)}</dt><dd>${e(time)}</dd></div>`).join('')}</dl><p class="small">Сроки зависят от объёма заказа, адреса объекта и графика фабрик. Для проектов сроки доставки и монтажа согласуем индивидуально и фиксируем в договоре.</p></div>
     <aside class="panel delivery-checklist"><h2>Что нужно для точного расчёта</h2><ul><li>Адрес, этаж и наличие грузового лифта.</li><li>Количество изделий и размеры самых крупных деталей.</li><li>Доступ для разгрузки и желаемая дата готовности.</li></ul>
     <div class="actions">${!target && cart.length?'<a class="btn" href="#/checkout">Рассчитать доставку корзины</a>':''}<button class="btn ${cart.length && !target?'secondary':''}" data-scroll="delivery-form">${target?'Рассчитать для этого товара':'Запросить расчёт доставки'}</button></div></aside></section>
     <section class="section delivery-request">
@@ -888,7 +911,7 @@ function deliveryPage(target, option) {
       ${contactFields()}<button class="btn" type="submit">${hasBackend?'Отправить запрос':'Открыть письмо с запросом'}</button>
       <p class="result" role="status" hidden></p></form></section>
     <section class="section"><div class="section-head"><h2>Сборка на объекте</h2></div><div class="steps service-steps">
-      <div><h3>Согласуем дату</h3><p>По стандартным условиям сборка проводится в рабочее время. Сборку в день доставки согласуем по заказу.</p></div>
+      <div><h3>Согласуем дату</h3><p>Обычно мебель собирают на объекте при доставке. Сборку мебели для кабинета руководителя можно согласовать на день доставки или на другую дату. Работы проводим в рабочее время по договорённости.</p></div>
       <div><h3>Проверим доступ</h3><p>Подъём, установка навесных элементов и нестандартные условия согласуются и оплачиваются отдельно.</p></div>
       <div><h3>Уточним объём</h3><p>Демонтаж и утилизация старой мебели в стандартную сборку не входят. Опишите эти работы при запросе.</p></div></div></section>
     <section class="section"><h2>Вопросы по доставке</h2><div class="faq">
@@ -901,11 +924,12 @@ function deliveryPage(target, option) {
 function servicePage() {
   return page('Услуги и сервис',`<p class="intro">Помогаем с комплектацией, документами по заказу и вопросами после поставки.</p>
     <div class="steps service-steps">
-      <div><h3>Подбор и дизайн-проект</h3><p>Пришлите план и число сотрудников. Подберём рабочие места, переговорные, хранение и мебель для зоны приёма.</p><a class="text-link" href="#/project">Рассчитать комплектацию</a></div>
+      <div><h3>Подбор и дизайн-проект</h3><p>Подготовим бесплатный дизайн-проект по плану помещения. Если размеры неизвестны, согласуем выезд на замер.</p><a class="text-link" href="#/project">Рассчитать комплектацию</a></div>
       <div><h3>Доставка, подъём и монтаж</h3><p>Оценим объём, адрес, подъём на этаж и условия сборки. Для проекта согласуем график работ.</p><a class="text-link" href="#/delivery">Тарифы и сроки</a></div>
       <div><h3>Оплата и документы</h3><p>Для организаций подготовим коммерческое предложение, договор и счёт. Возможна оплата с НДС. Работаем с электронным документооборотом.</p><a class="text-link" href="#/contacts">Запросить документы</a></div></div>
-    <section class="section service-details"><div><h2>Гарантия и обращение по заказу</h2><p>Срок гарантии указан в карточке модели, если его опубликовал производитель или магазин. Перед заказом его можно уточнить по артикулу.</p><p>При повреждении или некомплекте укажите номер заказа и артикул, опишите проблему и приложите фотографии. Если мебель уже собрана, сообщите об этом менеджеру.</p></div>
-    <aside class="panel"><h3>Связаться с сервисом</h3><p class="small">Подготовьте номер заказа, чтобы мы быстрее нашли поставку.</p><a class="text-link" href="mailto:${site.email}">${site.email}</a><br><a class="text-link" href="tel:+73422155898">${site.phone}</a></aside></section>`);
+    <section class="section service-details"><div><h2>Гарантия и обслуживание</h2><p>Гарантия на мебель составляет до двух лет в зависимости от модели. Срок можно уточнить по артикулу. После окончания гарантии помогаем с обслуживанием и доукомплектацией офиса.</p><p>При повреждении или некомплекте укажите номер заказа и артикул, опишите проблему и приложите фотографии. Если мебель уже собрана, сообщите об этом менеджеру.</p></div>
+    <aside class="panel"><h3>Связаться с сервисом</h3><p class="small">Подготовьте номер заказа, чтобы мы быстрее нашли поставку.</p><a class="text-link" href="mailto:${site.email}">${site.email}</a><br><a class="text-link" href="tel:+73422155898">${site.phone}</a></aside></section>
+    <section class="panel info-panel"><h2>Офисная мебель на заказ</h2><p>Если нужна мебель нестандартных размеров, пришлите дизайн-проект, эскиз или размеры. Подготовим задание и предварительный расчёт. После согласования эскиза организуем изготовление, доставку и монтаж.</p><div class="actions"><a class="btn secondary" href="#/project">Запросить расчёт</a></div></section>`);
 }
 
 function contactsPage(showroom) {
@@ -919,7 +943,7 @@ function contactsPage(showroom) {
   const mapFrame = 'https://yandex.ru/map-widget/v1/?'+mapParams;
   if (showroom) return page('Визит в офис',`<p class="intro">Позвоните перед визитом и сообщите артикул изделия или название серии. Менеджер подтвердит время встречи и подскажет, какую мебель или образцы отделки можно посмотреть.</p>
     <section class="contacts-grid entrance-grid">${photo('./assets/company.webp','Вход и вывеска Гранд-Офис на Екатерининской улице','width="1158" height="850"')}
-      <div class="panel"><h2>Куда приехать</h2><p>${e(address)}. Вход под вывеской «Гранд-Офис».</p>${hours?'<p><strong>'+e(hours)+'</strong></p>':''}<p>Если вы планируете комплектацию, захватите план помещения, размеры и желаемую дату переезда.</p><div class="actions"><a class="btn" href="tel:+73422155898">Согласовать визит</a><a class="text-link" href="${mapLink}">График и маршрут на Яндекс Картах</a></div></div></section>`,[['Контакты','#/contacts']]);
+      <div class="panel"><h2>Куда приехать</h2><p>${e(address)}. Вход под вывеской «Гранд-Офис».</p>${hours?'<p><strong>'+e(hours)+'</strong></p>':''}<p>Если вы планируете комплектацию, захватите план помещения, размеры и желаемую дату переезда. Дизайн-проект можно обсудить и составить вместе с менеджером в шоуруме.</p><div class="actions"><a class="btn" href="tel:+73422155898">Согласовать визит</a><a class="text-link" href="${mapLink}">График и маршрут на Яндекс Картах</a></div></div></section>`,[['Контакты','#/contacts']]);
   return page('Контакты',`<p class="intro">Свяжитесь с нами, чтобы подобрать мебель, рассчитать поставку или уточнить условия по заказу.</p>
     <section class="contacts-grid"><div class="panel"><h2>Офис в Перми</h2><dl class="contact-details">
     <div><dt>Адрес</dt><dd>${e(address)}</dd></div><div><dt>Телефон</dt><dd><a class="text-link" href="tel:+73422155898">${site.phone}</a></dd></div><div><dt>Почта</dt><dd><a class="text-link" href="mailto:${site.email}">${site.email}</a></dd></div>
@@ -931,14 +955,16 @@ function contactsPage(showroom) {
 }
 
 function aboutPage() {
-  return page('О компании',`<p class="intro">«Гранд-Офис» поставляет офисную мебель в Перми и Пермском крае. Помогаем с отдельной покупкой и оснащением офиса под ключ.</p>
+  return page('О компании',`<p class="intro company-intro">«Гранд-Офис» работает с 2019 года. До основания компании команда занималась офисной мебелью под другим брендом. Помогаем обустроить рабочие места, кабинеты руководителей, переговорные, приёмные и зоны ожидания. Доставляем мебель по России.</p>
+    <dl class="company-grid company-figures" aria-label="Гранд-Офис в цифрах">${companyFigures.map(([value,label])=>'<div><dt>'+e(value)+'</dt><dd>'+e(label)+'</dd></div>').join('')}</dl>
     <section class="project-feature about-feature">${photo('./assets/company.webp','Офис компании Гранд-Офис в Перми','loading="lazy" width="1158" height="850"')}
-      <div><h2>От планировки до монтажа</h2><p>Подбираем мебель для рабочих мест, кабинетов, переговорных и клиентских зон. Согласуем расстановку, комплектацию и график поставки.</p><div class="actions"><a class="btn" href="#/project">Обсудить проект</a><a class="text-link" href="#/contacts">Как нас найти</a></div></div></section>
-    <section class="section"><div class="section-head"><h2>Как работаем</h2></div><div class="steps service-steps">
-      <div><h3>Комплектация по задаче</h3><p>Начинаем с плана, числа сотрудников и бюджета. Подбираем мебель по размерам, отделке и назначению зоны.</p></div>
-      <div><h3>Производители и склад</h3><p>Комплектуем заказы на собственном складе в Перми и работаем напрямую с фабриками. Наличие и сроки подтверждаем по конкретным моделям.</p></div>
-      <div><h3>Поставка и сопровождение</h3><p>Доставляем мебель собственным транспортом, собираем и расставляем её на объекте. Помогаем с гарантийными обращениями и доукомплектацией.</p></div></div></section>
-    <section class="section service-details"><div><h2>Реквизиты</h2><dl class="contact-details"><div><dt>Организация</dt><dd>ООО «ГРАНД-ОФИС»</dd></div><div><dt>ИНН</dt><dd>5904377899</dd></div><div><dt>ОГРН</dt><dd>1195958033700</dd></div></dl><a class="text-link" href="https://grand-office59.ru/privacy-policy/">Сведения об организации</a></div>
+      <div><h2>Команда</h2><p>Специалисты по архитектуре, проектированию и поставкам ведут проект от замера до монтажа. Вместе с вами согласуем планировку, состав мебели, бюджет и сроки.</p><div class="actions"><a class="btn" href="#/project">Обсудить проект</a><a class="text-link" href="#/contacts">Как нас найти</a></div></div></section>
+    <section class="section"><div class="section-head"><h2>Фабрики, склад и сервис</h2></div><div class="steps">
+      <div><h3>Российские и европейские фабрики</h3><p>Работаем напрямую с производителями. Подбираем мебель разного ценового уровня под задачу и бюджет.</p></div>
+      <div><h3>Склад в Перми</h3><p>На своём складе комплектуем заказы. Наличие партии и сроки поставки уточняем по выбранным моделям.</p></div>
+      <div><h3>Собственный транспорт и сборка</h3><p>Привозим мебель, собираем и расставляем её по плану. После поставки помогаем с сервисом и доукомплектацией.</p></div></div></section>
+    <section class="section"><div class="section-head"><h2>Как проходит заказ</h2></div><div class="steps">${informationCards(projectStages)}</div></section>
+    <section class="section service-details"><div><h2>Реквизиты</h2><dl class="contact-details"><div><dt>Организация</dt><dd>ООО «ГРАНД-ОФИС»</dd></div><div><dt>ИНН</dt><dd>5904377899</dd></div><div><dt>ОГРН</dt><dd>1195958033700</dd></div></dl><a class="text-link" href="https://grand-office59.ru/privacy-policy/">Политика конфиденциальности</a></div>
     <aside class="panel"><h3>Клиенты и проекты</h3><p>Посмотрите фотографии реализованных проектов для Сбера, Россельхозбанка, ЛУКОЙЛа и Газпрома.</p><a class="text-link" href="#/projects">Смотреть портфолио</a></aside></section>`);
 }
 
