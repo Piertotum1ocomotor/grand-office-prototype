@@ -49,6 +49,11 @@ const site = (() => {
     collections = undefined;
     return [];
   }));
+  let facts;
+  const getCatalogFacts = () => (facts ??= get('./data/catalog-facts.json').catch(error=>{
+    facts = undefined;
+    throw error;
+  }));
   const datasets = new Map();
   const getDetails = async (id) => {
     if (await backend) return get('./api/products/' + id);
@@ -114,5 +119,5 @@ const site = (() => {
     ['Специализированная мебель','5–10 дней','special'],
     ['Мебель для обеденных зон','5–10 дней','dining']
   ];
-  return { original, email, phone, escape, normalize, format, money, session, save, config, catalog, browse, getFeatured, getCollections, getDetails, variation, backend, post, mail, startCategories, projects, delivery };
+  return { original, email, phone, escape, normalize, format, money, session, save, config, catalog, browse, getFeatured, getCollections, getCatalogFacts, getDetails, variation, backend, post, mail, startCategories, projects, delivery };
 })();

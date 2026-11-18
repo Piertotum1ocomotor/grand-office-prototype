@@ -112,6 +112,12 @@ def init():
 @lru_cache(maxsize=1)
 def catalog():
     raw = json.loads((ROOT / 'data/catalog.json').read_text(encoding='utf-8'))
+    facts = json.loads((ROOT / 'data/catalog-facts.json').read_text(encoding='utf-8'))
+    parts = set(facts['parts'])
+    for row in raw['items']:
+        row[11] = facts['dimensions'].get(str(row[0]), row[11])
+        if row[0] in parts:
+            row[12] = 'parts'
     return raw, {row[0]: row for row in raw['items']}
 
 @lru_cache(maxsize=1)
@@ -724,7 +730,7 @@ class SiteServer(BaseHTTPRequestHandler):
                     return self.response(200,row['file_data'],row['file_type'],{'Content-Disposition':f'attachment; filename="attachment.{ext}"'})
             raise Problem('Страница не найдена.',404)
         resource=path.strip('/')
-        allowed = resource in FILES or re.fullmatch(r'assets/[A-Za-z0-9_.-]+|data/(?:catalog|featured|collections|browse/sections)\.json|data/products/[0-9]+\.json',resource)
+        allowed = resource in FILES or re.fullmatch(r'assets/[A-Za-z0-9_.-]+|data/(?:catalog|featured|collections|catalog-facts|browse/sections)\.json|data/products/[0-9]+\.json',resource)
         if allowed and resource!='index.html':
             return self.static(ROOT/resource)
         if path.startswith('/api/'):
