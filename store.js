@@ -44,6 +44,11 @@ const site = (() => {
   };
   let featured;
   const getFeatured = () => (featured ??= get('./data/featured.json').catch(()=>[]));
+  let collections;
+  const getCollections = () => (collections ??= get('./data/collections.json').catch(()=>{
+    collections = undefined;
+    return [];
+  }));
   const datasets = new Map();
   const getDetails = async (id) => {
     if (await backend) return get('./api/products/' + id);
@@ -108,5 +113,5 @@ const site = (() => {
     ['Специализированная мебель','5–10 дней','special'],
     ['Мебель для обеденных зон','5–10 дней','dining']
   ];
-  return { original, email, phone, escape, normalize, format, money, session, save, config, catalog, browse, getFeatured, getDetails, variation, backend, post, mail, startCategories, projects, delivery };
+  return { original, email, phone, escape, normalize, format, money, session, save, config, catalog, browse, getFeatured, getCollections, getDetails, variation, backend, post, mail, startCategories, projects, delivery };
 })();

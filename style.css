@@ -543,6 +543,37 @@ select.field[multiple],select.field[size]:not([size="1"]){appearance:auto;backgr
 .catalog-heading{align-items:center;margin-bottom:12px}
 .catalog-heading .count-label{margin:0}
 
+.collection-tools{display:grid;gap:12px;margin-block:20px 17px;padding-bottom:16px;border-bottom:1px solid var(--line)}
+.collection-tools .quick-categories{margin:0}
+.collection-classes .chip{font-size:14px;padding-block:6px}
+.collection-controls,.catalog-collection-entry{display:flex;align-items:center;flex-wrap:wrap;gap:var(--action-gap)}
+.collection-controls{justify-content:space-between}
+#collection-search{display:flex;gap:var(--action-gap);align-items:center;width:min(100%,410px)}
+#collection-search .field{flex:1}
+.collection-group{margin-block:22px 36px}
+.collection-group h2{font-size:clamp(24px,3vw,35px);margin-bottom:12px}
+.collection-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:15px}
+.collection-tile{display:flex;flex-direction:column;overflow:hidden;background:var(--paper);border:1px solid var(--line);border-radius:12px}
+.collection-tile:hover{border-color:#b98b7d}
+.collection-tile img{width:100%;aspect-ratio:4/3;object-fit:contain;background:#ede9e5}
+.collection-tile>div{padding:13px 15px;display:grid;gap:5px}
+.collection-tile h3{font-size:clamp(16px,1.7vw,22px);overflow-wrap:anywhere}
+.catalog-collection-entry{margin-block:14px 18px}
+.catalog-collection-entry img{width:132px;aspect-ratio:4/3;object-fit:contain;background:var(--soft);border-radius:8px}
+.catalog-subsections a,.applied-filters .chip{overflow-wrap:anywhere}
+.product-back{display:inline-block;margin-bottom:15px}
+.product-description{max-width:75ch}
+.product-prose{display:grid;gap:.8em;font-size:clamp(16px,1.5vw,18px);line-height:1.65;white-space:pre-line;overflow-wrap:anywhere}
+@media(max-width:960px){
+  .collection-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:11px}
+}
+@media(max-width:620px){
+  .collection-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+  .collection-tile>div{padding:9px 10px}
+  .collection-tile .small{font-size:12px}
+  .catalog-collection-entry img{width:82px}
+}
+
 /* Office planner */
 #office-planner{grid-template-columns:minmax(235px,300px) minmax(0,1fr);gap:clamp(14px,2vw,24px)}
 .planner-sidebar{display:grid;gap:14px;min-width:0}

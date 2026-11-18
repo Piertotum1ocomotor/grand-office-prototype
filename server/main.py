@@ -642,7 +642,7 @@ def import_feed(data):
 
 class SiteServer(BaseHTTPRequestHandler):
     def response(self,status,data,kind='application/json; charset=utf-8',extra=None):
-        body = json.dumps(data,ensure_ascii=False).encode('utf-8') if kind.startswith('application/json') else data
+        body = json.dumps(data,ensure_ascii=False).encode('utf-8') if kind.startswith('application/json') and not isinstance(data,bytes) else data
         headers = dict(extra or {})
         if len(body) >= 8192 and kind.startswith(('application/json','text/','application/xml')):
             headers['Vary'] = 'Accept-Encoding'
@@ -724,7 +724,7 @@ class SiteServer(BaseHTTPRequestHandler):
                     return self.response(200,row['file_data'],row['file_type'],{'Content-Disposition':f'attachment; filename="attachment.{ext}"'})
             raise Problem('Страница не найдена.',404)
         resource=path.strip('/')
-        allowed = resource in FILES or re.fullmatch(r'assets/[A-Za-z0-9_.-]+|data/(?:catalog|featured)\.json|data/products/[0-9]+\.json',resource)
+        allowed = resource in FILES or re.fullmatch(r'assets/[A-Za-z0-9_.-]+|data/(?:catalog|featured|collections|browse/sections)\.json|data/products/[0-9]+\.json',resource)
         if allowed and resource!='index.html':
             return self.static(ROOT/resource)
         if path.startswith('/api/'):
