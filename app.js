@@ -558,24 +558,123 @@ function collectionOverview(settings, selected) {
       '<p class="empty">Коллекции с таким названием не найдены. <a class="text-link" href="'+e(toOverview({cq:null,cp:null}))+'">Сбросить поиск</a></p>'),levels);
 }
 
-function collectionFilter(type, selected, series, chosen) {
-  if (collectionCategory(selected) && !series) return '';
+function collectionChoices(type, selected) {
   const branch = collectionScope(selected);
   const sectionList = branch ? [branch] : selected ? [] : collectionSections;
-  const groups = sectionList.map(section=>{
-    const options=section.groups.filter(group=>!selected || selected.id===section.id || selected.id===group.id)
-      .flatMap(group=>group.items).filter(entry=>entry.count && (!type || entry.types.includes(type)))
-      .map(entry=>catById.get(entry.id)).sort((a,b)=>a.name.localeCompare(b.name,'ru'));
-    return [section.name,options];
-  }).filter(([,options])=>options.length);
-  if (!groups.length && !series) return '';
-  const available = groups.some(([,options])=>options.some(option=>option.id===chosen?.id));
-  return '<div><label class="field-label" for="catalog-series">Коллекция</label><select class="field" id="catalog-series" name="series"><option value="">Все коллекции</option>'+
-    (series && !available?'<option value="'+e(series)+'" selected>'+e(chosen?.name || series)+'</option>':'')+
-    groups.map(([name,options])=>'<optgroup label="'+e(name)+'">'+options.map(option=>
-      '<option value="'+e(option.slug)+'"'+(option.id===chosen?.id?' selected':'')+'>'+e(option.name)+'</option>').join('')+
-      '</optgroup>').join('')+'</select></div>';
+  return sectionList.map(section=>({
+    id:section.id,name:section.name,
+    items:section.groups.filter(group=>!selected || selected.id===section.id || selected.id===group.id)
+      .flatMap(group=>group.items.filter(item=>item.count && (!type || scopeTypes(catById.get(item.id)).includes(type)))
+        .map(item=>({category:catById.get(item.id),group:group.label})))
+      .sort((a,b)=>a.category.name.localeCompare(b.category.name,'ru'))
+  })).filter(section=>section.items.length);
 }
+
+function collectionFilter(type, selected, series, chosen) {
+  if (collectionCategory(selected) && !series) return '';
+  const groups=collectionChoices(type,selected);
+  if (!groups.length && !series) return '';
+  return '<div class="collection-filter"><span class="field-label" id="catalog-series-label">Коллекция</span>'+
+    '<input type="hidden" id="catalog-series" name="series" value="'+e(series)+'">'+
+    '<button class="field collection-picker-trigger" type="button" data-choose-collection aria-haspopup="dialog" aria-controls="collection-picker" aria-labelledby="catalog-series-label catalog-series-value">'+
+    '<span id="catalog-series-value">'+e(chosen?.name.replace(collectionPrefix,'') || series || 'Выбрать коллекцию')+'</span>'+
+    '<i class="chevron" aria-hidden="true"></i></button></div>';
+}
+
+document.body.insertAdjacentHTML('beforeend','<dialog id="collection-picker" class="collection-picker" aria-labelledby="collection-picker-title">'+
+  '<div class="collection-picker-heading"><h2 id="collection-picker-title">Выбрать коллекцию</h2><button type="button" class="collection-picker-close" aria-label="Закрыть выбор коллекции">×</button></div>'+
+  '<div class="collection-picker-search"><label for="collection-picker-query" class="sr-only">Найти коллекцию</label>'+
+  '<input class="field" type="search" id="collection-picker-query" placeholder="Название, например Xten или Икстен" maxlength="100" autocomplete="off" aria-controls="collection-picker-options">'+
+  '<p class="small" id="collection-picker-count" role="status"></p></div>'+
+  '<form id="collection-picker-form"><div class="collection-picker-options" id="collection-picker-options"></div>'+
+  '<div class="collection-picker-footer"><button type="submit" class="btn">Применить</button><a class="text-link" id="collection-picker-photos" href="#/catalog?view=collections">Посмотреть коллекции с фото</a></div></form></dialog>');
+const collectionPicker=document.querySelector('#collection-picker');
+const pickerQuery=document.querySelector('#collection-picker-query');
+let pickerState;
+
+function renderCollectionChoices() {
+  const query=collectionSearchKey(pickerQuery.value.trim());
+  const matched=pickerState.groups.map(section=>({...section,
+    items:section.items.filter(item=>!query || collectionNameRank(item.category,query))
+      .sort((a,b)=>query ? collectionNameRank(b.category,query)-collectionNameRank(a.category,query) : 0)
+  })).filter(section=>section.items.length);
+  const count=matched.reduce((sum,section)=>sum+section.items.length,0);
+  document.querySelector('#collection-picker-count').textContent=(query?'Найдено коллекций: ':'Доступно коллекций: ')+count;
+  const option=(category,caption)=>'<label class="collection-picker-option"><input type="radio" name="collection" value="'+e(category?.slug || '')+'" '+
+    (pickerState.value===(category?.slug || '')?'checked':'')+'><span><strong>'+e(category?.name.replace(collectionPrefix,'') || 'Все коллекции')+'</strong>'+
+    (caption?'<small>'+e(caption)+'</small>':'')+'</span></label>';
+  const selected=selectedSeries(pickerState.value);
+  const selectedOutside=selected && !pickerState.groups.some(section=>section.items.some(item=>item.category.id===selected.id));
+  document.querySelector('#collection-picker-options').innerHTML=
+    (!query?option(null,'Снять фильтр по коллекции')+(selectedOutside?option(selected,'Текущий выбор'):''):'')+
+    matched.map(section=>'<details class="collection-picker-group" data-picker-section="'+section.id+'" '+
+      (query || pickerState.open.has(section.id)?'open':'')+'><summary><span>'+e(section.name)+'</span><span class="small">'+section.items.length+'</span><i class="chevron" aria-hidden="true"></i></summary>'+
+      '<div>'+section.items.map(item=>option(item.category,[section.name,item.group].filter(Boolean).join(' · '))).join('')+'</div></details>').join('')+
+    (!count?'<div class="collection-picker-empty"><p>Коллекции с таким названием не найдены.</p><button type="button" class="text-link" data-picker-reset>Показать полный список</button></div>':'');
+}
+
+function openCollectionPicker(button) {
+  const settings=catalogSettings(getRoute().args);
+  const category=selectedCategory(settings.get('c'));
+  const groups=collectionChoices(settings.get('t'),category);
+  const value=document.querySelector('#catalog-series').value;
+  pickerState={groups,value,button,open:new Set(groups.filter(section=>
+    section.items.some(item=>item.category.slug===value) || groups.length===1).map(section=>section.id))};
+  pickerQuery.value='';
+  document.querySelector('#collection-picker-photos').href=catalogLink('',{c:category?.slug,view:'collections'});
+  prepareLinks(collectionPicker);
+  renderCollectionChoices();
+  const rect=button.getBoundingClientRect();
+  const width=Math.min(540,window.innerWidth-32);
+  collectionPicker.style.left=Math.max(16,Math.min(rect.right+12,window.innerWidth-width-16))+'px';
+  collectionPicker.style.top=Math.max(16,Math.min(rect.top,window.innerHeight-Math.min(660,window.innerHeight-32)-16))+'px';
+  collectionPicker.showModal();
+  document.body.classList.add('choosing-collection');
+  if (matchMedia('(min-width:621px)').matches) pickerQuery.focus({preventScroll:true});
+}
+
+pickerQuery.addEventListener('input',renderCollectionChoices);
+collectionPicker.addEventListener('keydown',event=>{
+  if (event.key==='Escape') {
+    event.preventDefault();
+    collectionPicker.close();
+  }
+});
+collectionPicker.addEventListener('toggle',event=>{
+  const group=event.target;
+  if (!group.dataset.pickerSection || pickerQuery.value.trim()) return;
+  if (group.open) pickerState.open.add(Number(group.dataset.pickerSection));
+  else pickerState.open.delete(Number(group.dataset.pickerSection));
+},true);
+collectionPicker.addEventListener('change',event=>{
+  if (event.target.name==='collection') pickerState.value=event.target.value;
+});
+collectionPicker.addEventListener('click',event=>{
+  if (event.target.closest('.collection-picker-close')) collectionPicker.close();
+  if (event.target.closest('[data-picker-reset]')) {
+    pickerQuery.value='';
+    renderCollectionChoices();
+    pickerQuery.focus();
+  }
+  if (event.target.closest('#collection-picker-photos')) collectionPicker.close();
+  if (event.target===collectionPicker) {
+    const rect=collectionPicker.getBoundingClientRect();
+    if (event.clientX<rect.left || event.clientX>rect.right || event.clientY<rect.top || event.clientY>rect.bottom) collectionPicker.close();
+  }
+});
+collectionPicker.addEventListener('close',()=>{
+  document.body.classList.remove('choosing-collection');
+  if (pickerState?.button.isConnected) pickerState.button.focus({preventScroll:true});
+});
+document.querySelector('#collection-picker-form').addEventListener('submit',event=>{
+  event.preventDefault();
+  const field=document.querySelector('#catalog-series');
+  field.value=pickerState.value;
+  const chosen=selectedSeries(pickerState.value);
+  document.querySelector('#catalog-series-value').textContent=chosen?.name.replace(collectionPrefix,'') || pickerState.value || 'Выбрать коллекцию';
+  collectionPicker.close();
+  field.form.requestSubmit();
+});
 
 function catalogFinishControl(collection, finish) {
   const options = (catalogFacts.collectionFinishes[collection?.id] || []).map(index=>catalogFacts.finishes[index]);
@@ -1505,6 +1604,11 @@ main.addEventListener('toggle',event=>{
 window.addEventListener('resize',()=>main.querySelectorAll('.project-track').forEach(syncCarousel));
 
 main.addEventListener('click', async (event)=>{
+  const collectionButton=event.target.closest('[data-choose-collection]');
+  if (collectionButton) {
+    openCollectionPicker(collectionButton);
+    return;
+  }
   const tab=event.target.closest('[data-catalog-type]');
   if (tab && event.button===0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
     const route=tab.dataset.route || tab.getAttribute('href');
@@ -1709,7 +1813,13 @@ main.addEventListener('submit',async(event)=>{
     const patch={p:null,unknown:null};
     for (const [key,value] of fields) patch[key]=String(value).trim();
     if (!ranges.slice(1).some(hasBounds)) patch.unknown=null;
-    navigate(catalogLink(catalogSettings(getRoute().args),patch));
+    const settings=catalogSettings(getRoute().args);
+    if (Object.hasOwn(patch,'series') && patch.series!==(settings.get('series') || '')) {
+      const chosen=selectedSeries(patch.series);
+      const finishes=(catalogFacts.collectionFinishes[chosen?.id] || []).map(index=>catalogFacts.finishes[index]);
+      if (!finishes.includes(settings.get('finish'))) patch.finish=null;
+    }
+    navigate(catalogLink(settings,patch));
     return;
   }
   if (form.id==='catalog-jump') {
@@ -1908,6 +2018,7 @@ function onRouteChange() {
   if (address===previousRoute || !pathRouting && address==='#main') return;
   positions.set(previousRoute,window.scrollY);
   previousRoute=address;
+  if (collectionPicker.open) collectionPicker.close();
   const typeSwitch=pendingTypeSwitch?.route===address ? pendingTypeSwitch : null;
   pendingTypeSwitch=null;
   hideSearchSuggestions();
