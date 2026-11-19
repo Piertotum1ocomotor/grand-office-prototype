@@ -399,29 +399,12 @@ function showDepartmentIndex(settings) {
   return !['c','view','q','t','p','sort',...filterFields].some(key=>settings.get(key));
 }
 
-function catalogModeNav(active, settings, selected) {
-  return '<nav class="catalog-navigation" aria-label="Каталог"><a class="text-link" href="#/catalog">Каталог по назначению</a>'+
-    '<a class="text-link" href="'+e(collectionNavigation())+'">Все коллекции</a>'+
-    (selected && collectionScope(selected)?'<a class="text-link" href="'+e(catalogLink('',{c:selected.slug,view:active==='products'?null:'products'}))+'">'+
-      (active==='products'?'Коллекции раздела':'Все товары раздела')+'</a>':'')+'</nav>';
-}
-
-function catalogBrowseCard(label, image, link, caption = '') {
-  return '<a class="catalog-browse-card" href="'+e(link)+'">'+
-    (image?photo(site.original+'/wp-content/uploads/'+image,'','loading="lazy" width="600" height="420"'):'')+
-    '<div><h3>'+e(label)+'</h3>'+(caption?'<p class="small">'+e(caption)+'</p>':'')+'</div></a>';
-}
-
 function catalogDepartmentsPage() {
-  const tiles = catalogDepartments.map(([label,slug,image])=>catalogBrowseCard(label,image,catalogLink('',
-    slug==='chairs'?{t:slug,view:'products'}:{c:slug})));
-  return page('Каталог офисной мебели',
-    '<section class="catalog-entry-types"><h2>Какая мебель нужна</h2><nav class="quick-categories" aria-label="Тип мебели">'+
-    Object.entries(productTypes).map(([key,[name]])=>'<a class="chip" href="'+e(catalogLink('',{t:key}))+'">'+e(name)+'</a>').join('')+'</nav></section>'+
-    '<div class="catalog-entry-search"><form id="collection-search" role="search" aria-label="Поиск коллекции"><label class="sr-only" for="collection-query">Название коллекции</label>'+
-    '<input class="field" type="search" id="collection-query" name="cq" maxlength="100" placeholder="Коллекция, например Xten"><button class="btn secondary" type="submit">Найти</button></form>'+
-    '<a class="text-link" href="'+e(collectionNavigation())+'">Все коллекции</a></div>'+
-    '<section class="catalog-entry-departments"><h2>Для какого пространства</h2><div class="catalog-department-grid">'+tiles.join('')+'</div></section>');
+  const choices=[['Коллекции',collectionNavigation(),'Найти мебель своей серии'],
+    ...Object.entries(productTypes).map(([key,[name]])=>[name,catalogLink('',{t:key}),''])];
+  return page('Каталог','<nav class="catalog-entry-grid" aria-label="Каталог мебели">'+
+    choices.map(([label,href,caption],index)=>'<a class="catalog-browse-card catalog-entry-card'+(index===0?' catalog-entry-collections':'')+'" href="'+e(href)+'"><div><h2>'+e(label)+'</h2>'+
+      (caption?'<p class="small">'+e(caption)+'</p>':'')+'</div></a>').join('')+'</nav>');
 }
 
 const lookalikeLetters = [...'авсенкмортху'];
@@ -520,7 +503,7 @@ function collectionOverview(settings, selected) {
   const section = collectionScope(selected);
   const tier = section?.groups.find(group=>group.id===selected?.id && group.id!==section.id);
   const department = section && settings.get('view')!=='collections';
-  const title = tier ? selected.name : section?.name || 'Коллекции офисной мебели';
+  const title = tier ? selected.name : section?.name || 'Коллекции';
   const query = (settings.get('cq') || '').trim().slice(0,100);
   const pick = settings.get('pick');
   const parts = pick ? collectionSearch(pick.slice(0,120)).parts : null;
@@ -532,8 +515,8 @@ function collectionOverview(settings, selected) {
   const toOverview = patch=>catalogLink(settings,patch);
   const chip = (label,href,active)=>'<a class="chip" href="'+e(href)+'"'+
     (active?' aria-current="page"':'')+'>'+e(label)+'</a>';
-  const segmentTabs = chip('Все коллекции',collectionNavigation(),!section)+collectionSections.map(entry=>
-    chip(entry.name,catalogLink('',{c:catById.get(entry.id).slug,view:'collections'}),entry===section)).join('');
+  const segmentTabs = chip('Все назначения',toOverview({c:null,view:'collections',cp:null}),!section)+collectionSections.map(entry=>
+    chip(entry.name,toOverview({c:catById.get(entry.id).slug,view:'collections',cp:null}),entry===section)).join('');
   const classTabs = section?.groups.length>1 ? '<nav class="quick-categories collection-classes" aria-label="Класс мебели">'+
     chip('Все классы',toOverview({c:catById.get(section.id).slug,cp:null}),!tier)+section.groups.map(group=>
       chip(group.label,toOverview({c:catById.get(group.id).slug,cp:null}),group===tier)).join('')+'</nav>' : '';
@@ -546,11 +529,11 @@ function collectionOverview(settings, selected) {
   const levels = [['Каталог','#/catalog']];
   if (section && !department) levels.push(['Коллекции',collectionNavigation()]);
   if (tier) levels.push([section.name,catalogLink('',{c:catById.get(section.id).slug,view:settings.get('view')})]);
-  const browseNav = department ? '' : '<nav class="quick-categories catalog-collection-segments" aria-label="Разделы коллекций">'+segmentTabs+'</nav>';
-  return page(title,catalogModeNav('collections',settings,selected)+
-    '<div class="collection-tools">'+browseNav+classTabs+'<form id="collection-search" role="search" aria-label="Поиск коллекции">'+
+  const browseNav = '<nav class="quick-categories catalog-collection-segments" aria-label="Назначение">'+segmentTabs+'</nav>';
+  return page(title,'<div class="collection-tools"><form id="collection-search" role="search" aria-label="Поиск коллекции">'+
     '<label class="sr-only" for="collection-query">Название коллекции</label><input class="field" type="search" id="collection-query" name="cq" value="'+
-    e(query)+'" maxlength="100" placeholder="Название коллекции"><button class="btn secondary" type="submit">Найти</button></form></div>'+
+    e(query)+'" maxlength="100" placeholder="Название коллекции"><button class="btn secondary" type="submit">Найти</button></form>'+
+    '<details class="collection-browse-filters" '+(section?'open':'')+'><summary>Назначение и класс'+(section?' · '+e(tier?.label || section.name):'')+'</summary><div>'+browseNav+classTabs+'</div></details></div>'+
     (rows.length?'<p class="count-label">Коллекций: '+catalogNumber.format(rows.length)+'</p>'+sections+pagination :
       '<p class="empty">'+(query?'Коллекции с таким названием не найдены. <a class="text-link" href="'+e(toOverview({cq:null,cp:null}))+'">Сбросить поиск</a>':'В этом разделе пока нет коллекций.')+'</p>'),levels);
 }
@@ -834,15 +817,17 @@ function catalogPage(settings, preview, unavailable) {
     levels.splice(1);
     if (homeSection) levels.push([homeSection.name,collectionNavigation(catById.get(homeSection.id))]);
   }
-  const sectionLabel = homeSection?.id===catBySlug.get('mebel-v-kabinet-rukovoditelya')?.id ? 'Все коллекции для руководителя' :
-    homeSection ? 'Все коллекции: '+homeSection.name : 'Все коллекции';
-  const collectionLinks = collection ? '<nav class="collection-context-links" aria-label="Навигация коллекции">'+
-    (source?'<a class="text-link" data-catalog-return="'+e(Number(settings.get('backy')) || 0)+'" href="'+e(source)+'">Назад к результатам</a>':'')+
-    '<button type="button" class="text-link" data-choose-collection>Сменить коллекцию</button>'+
-    '<a class="text-link collection-section-link" href="'+e(homeSection?collectionNavigation(catById.get(homeSection.id)):collectionNavigation())+'">'+e(sectionLabel)+'</a></nav>' : '';
+  const sourceSettings=source ? catalogSettings(getRoute(source).args) : null;
+  const sourceType=sourceSettings?.get('t');
+  const returnTypes={tables:'столам',chairs:'креслам',cabinets:'шкафам',pedestals:'тумбам',shelving:'стеллажам',sofas:'диванам'};
+  const fromCollections=sourceSettings && showCollections(sourceSettings,sourceCategory);
+  const returnLabel=!source || fromCollections ? 'К коллекциям' : returnTypes[sourceType] ? 'Назад к '+returnTypes[sourceType] :
+    showDepartmentIndex(sourceSettings) ? 'В каталог' : 'Назад к списку';
+  const collectionLinks = collection ? '<nav class="collection-context-links" aria-label="Возврат из коллекции">'+
+    '<a class="text-link" data-catalog-return="'+e(Number(settings.get('backy')) || 0)+'" href="'+e(source || collectionNavigation())+'">'+e(returnLabel)+'</a></nav>' : '';
   const notice = settings.get('changedfinish') ? '<p class="catalog-notice">Отделка «'+e(settings.get('changedfinish'))+'» недоступна в выбранной коллекции. Показаны все отделки.</p>' : '';
   const childContext=childCategory ? '<p class="small catalog-subsection-context">Подраздел: '+e(childCategory.name)+'</p>' : '';
-  const catalogTools = (collection?collectionLinks:catalogModeNav('products',settings,selected))+
+  const catalogTools = collectionLinks+
     '<div class="catalog-type-tabs">'+catalogFinishControl(collection,finish)+typeTabs+'</div>'+childContext+notice+
     (!collection && sections?'<details class="catalog-subsection-toggle"><summary>Подразделы</summary>'+sections+'</details>':'')+
     (!collection && queryCollections?'<p class="catalog-related"><a class="text-link" href="'+e(collectionsLink)+'">Коллекции по запросу</a></p>':'');
@@ -1507,6 +1492,7 @@ function captureCatalogScroll(address, selector, focusSelector) {
     route:address,selector:anchor.matches(selector)?selector:'h1',top:anchor.getBoundingClientRect().top,
     scrollLeft:anchor.scrollLeft,focusSelector,
     filtersOpen:main.querySelector('.catalog-filters')?.open,
+    browseOpen:main.querySelector('.collection-browse-filters')?.open,
     filterSections:[...main.querySelectorAll('.filter-section')].map(section=>section.open),
     filterScroll:fields?.scrollTop || 0,
     directoryOpen:main.querySelector('.catalog-directory')?.open,
@@ -1515,6 +1501,8 @@ function captureCatalogScroll(address, selector, focusSelector) {
 }
 
 function restoreCatalogScroll(state) {
+  const browse=main.querySelector('.collection-browse-filters');
+  if (browse && state.browseOpen!==undefined) browse.open=state.browseOpen;
   const filters=main.querySelector('.catalog-filters');
   if (filters && state.filtersOpen!==undefined) filters.open=state.filtersOpen;
   main.querySelectorAll('.filter-section').forEach((section,index)=>{

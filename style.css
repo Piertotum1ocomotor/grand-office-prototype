@@ -800,7 +800,7 @@ dialog.plan-library-dialog{position:fixed;padding:0;width:min(540px,calc(100vw -
 .collection-context-links .collection-section-link{margin-left:auto}
 .collection-finishes{line-height:1.45}
 .collection-grid{margin-top:15px}
-.collection-shell .catalog-sidebar .collection-filter{display:none}
+
 .collection-shell .catalog-type-tabs{align-items:end}
 .collection-shell .catalog-finish{flex:none}
 @media(max-width:960px){
@@ -833,4 +833,26 @@ dialog.plan-library-dialog{position:fixed;padding:0;width:min(540px,calc(100vw -
  .page:has(.collection-shell) .breadcrumb>[aria-current],
  .page:has(.collection-shell) .breadcrumb>span:has(+[aria-current]){display:none}
  .collection-shell{margin-top:12px}
+}
+
+/* Catalog destinations are separate from product filters. */
+.catalog-entry-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:25px}
+.catalog-entry-card{justify-content:center;min-height:105px}
+.catalog-entry-card>div{padding:22px 24px}
+.catalog-entry-card h2{font-size:clamp(24px,2.8vw,35px)}
+.catalog-entry-collections{grid-column:1/-1;background:#f3e8e2;border-color:#c5a397;color:var(--brand-dark)}
+.catalog-entry-collections .small{margin-top:7px;color:var(--muted)}
+.collection-browse-filters>summary{cursor:pointer;color:var(--brand-dark);font-size:14px;padding-block:5px}
+.collection-browse-filters>div{display:grid;gap:12px;padding-top:10px}
+.collection-tools #collection-search{width:min(100%,560px)}
+.mobile-catalog-departments{border-bottom:1px solid var(--line)}
+.mobile-catalog-departments>summary{padding:12px 10px;min-height:44px;cursor:pointer}
+.mobile-catalog-departments>div{display:grid;padding:0 8px 8px 18px}
+.mobile-catalog-departments a{padding:10px 4px;font-size:14px;min-height:44px}
+@media(max-width:620px){
+ .catalog-entry-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:20px}
+ .catalog-entry-card{min-height:88px}
+ .catalog-entry-card>div{padding:17px 18px}
+ .catalog-entry-card h2{font-size:25px}
+ .collection-tools #collection-search{width:100%}
 }
