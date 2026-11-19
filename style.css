@@ -789,3 +789,48 @@ dialog.plan-library-dialog{position:fixed;padding:0;width:min(540px,calc(100vw -
 @media(max-width:580px){.planner-sidebar{grid-template-columns:1fr}.floor-stage{min-height:145px}}
 @media(max-width:480px){.plan-metrics{grid-template-columns:1fr 1fr}.plan-metrics div:last-child{grid-column:1/-1}}
 @media(max-width:620px){dialog.plan-library-dialog{inset:0;margin:0;width:100%;height:100dvh;max-height:100dvh;border:0;border-radius:0}.plan-library-content{padding-bottom:max(12px,env(safe-area-inset-bottom))}}
+
+/* A single entry and a compact, persistent collection context. */
+.catalog-entry-types{margin-top:22px}
+.catalog-entry-types h2,.catalog-entry-departments h2{font-size:clamp(23px,2.6vw,34px);margin-bottom:12px}
+.catalog-entry-search{display:flex;align-items:center;flex-wrap:wrap;gap:12px 22px;margin:18px 0 30px}
+.catalog-entry-departments{margin-top:24px}
+.collection-context-links{display:flex;align-items:center;flex-wrap:wrap;gap:10px 22px;margin:14px 0}
+.collection-context-links button{background:none;padding:0;font:inherit;text-align:left}
+.collection-context-links .collection-section-link{margin-left:auto}
+.collection-finishes{line-height:1.45}
+.collection-grid{margin-top:15px}
+.collection-shell .catalog-sidebar .collection-filter{display:none}
+.collection-shell .catalog-type-tabs{align-items:end}
+.collection-shell .catalog-finish{flex:none}
+@media(max-width:960px){
+ .collection-shell .catalog-directory{display:none}
+ .collection-shell .catalog-sidebar:not(:has(>details[open])){grid-template-columns:1fr}
+}
+@media(max-width:620px){
+ .catalog-entry-types{margin-top:18px}
+ .catalog-entry-search{margin-block:16px 24px}
+ .catalog-entry-search #collection-search{width:100%}
+ .catalog-entry-departments{margin-top:20px}
+ .collection-context-links{gap:9px 18px;font-size:14px;margin:10px 0 12px}
+ .collection-context-links .collection-section-link{margin-left:0;flex-basis:100%}
+ .page:has(.collection-shell)>h1{font-size:30px;line-height:1.15;margin-bottom:0}
+ .page:has(.collection-shell) .breadcrumb{font-size:12px;margin-bottom:10px}
+ .page:has(.collection-shell) .catalog-type-tabs{gap:10px;margin-top:0}
+ .page:has(.collection-shell) .catalog-finish{width:100%;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:12px}
+ .page:has(.collection-shell) .catalog-finish .field{padding-block:8px;min-height:40px}
+ .page:has(.collection-shell) .catalog-type-tabs .quick-categories{margin:0;gap:6px}
+ .page:has(.collection-shell) .catalog-type-tabs .chip{padding:7px 11px;font-size:14px;min-height:38px}
+ .collection-shell .catalog-sidebar .catalog-filters{padding-block:10px}
+ .collection-shell .catalog-heading{margin-bottom:8px;gap:8px}
+ .collection-shell .catalog-tools:empty{display:none}
+ .collection-tools{margin-top:12px;gap:10px;padding-bottom:12px}
+ .collection-classes{gap:6px}
+}
+@media(max-width:620px){
+ .page:has(.collection-shell) .breadcrumb>a:first-child,
+ .page:has(.collection-shell) .breadcrumb>a:first-child+span,
+ .page:has(.collection-shell) .breadcrumb>[aria-current],
+ .page:has(.collection-shell) .breadcrumb>span:has(+[aria-current]){display:none}
+ .collection-shell{margin-top:12px}
+}
