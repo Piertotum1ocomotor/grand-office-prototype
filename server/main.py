@@ -332,8 +332,11 @@ def site_config():
 
 def quote_selection(data,kit,count):
     supplied = data.get('kitLines')
+    finish = text(data,'kitFinish',140)
     if supplied is None:
-        return [(identifier,count) for identifier in kit['products']]
+        if finish:
+            raise Problem('Укажите варианты мебели для выбранной отделки.')
+        return [(identifier,count,0) for identifier in kit['products']]
     groups = {group['id']: group for group in kit.get('groups', [])}
     if not isinstance(supplied,list) or not 1 <= len(supplied) <= len(groups):
         raise Problem('Проверьте состав комплекта.')
@@ -346,7 +349,12 @@ def quote_selection(data,kit,count):
         quantity = integer(line.get('qty'),1,5000)
         if choice not in groups or choice in selected or item_id not in groups[choice]['models']:
             raise Problem('Проверьте выбранные модели.')
-        selected[choice] = (item_id,quantity)
+        variant = variant_id(item_id,line.get('choice',0))
+        if finish and choice in {'desk','storage'}:
+            label = next((option[1] for option in detail(item_id)[2] if option[0]==variant),'')
+            if re.sub(r'\s+',' ',label.strip()).casefold() != re.sub(r'\s+',' ',finish.strip()).casefold():
+                raise Problem('Проверьте общую отделку столов и тумб.')
+        selected[choice] = (item_id,quantity,variant)
     if any(key not in selected for key,group in groups.items() if not group.get('optional')):
         raise Problem('Выберите столы и кресла для комплекта.')
     return list(selected.values())
@@ -451,16 +459,19 @@ def quote_plan(data, count, desk, kit_lines):
         raise Problem('Выбранная расстановка выходит за границы комнаты.')
     return {**metrics,'layout':plan['layout']}
 
-def project_request(db,data):
-    count = integer(data['seats'],1,5000) if data.get('seats') not in (None,'') else None
+def request_deadline(data):
     deadline = text(data,'date',20)
     if deadline:
         try:
             deadline = date.fromisoformat(deadline).isoformat()
         except ValueError:
             raise Problem('Укажите дату готовности офиса.')
+    return deadline
+
+def project_request(db,data):
+    count = integer(data['seats'],1,5000) if data.get('seats') not in (None,'') else None
     payload = {
-        'seats': count, 'date': deadline, 'task': text(data,'task',1600),
+        'seats': count, 'date': request_deadline(data), 'task': text(data,'task',1600),
         'address': text(data,'address',250), 'product': text(data,'product',350)
     }
     if data.get('topic') == 'delivery':
@@ -492,15 +503,18 @@ def project_request(db,data):
     if not kit or choice != kit['id'] or count is None:
         raise Problem('Выберите комплект из списка.')
     output = []
-    for product,quantity in quote_selection(data,kit,count):
+    for product,quantity,variant in quote_selection(data,kit,count):
         product_row = record(product)
-        manual = edit_map(db,'edits',product).get(0)
-        supplier = edit_map(db,'supplier_values',product).get(0)
+        manual = edit_map(db,'edits',product).get(variant)
+        supplier = edit_map(db,'supplier_values',product).get(variant)
         updated_price, _ = combined(manual,supplier)
         content = db.execute('SELECT name FROM product_content WHERE product=?',(product,)).fetchone()
+        source_price = cached_source_variant(product,variant).get('price') if variant else product_row[3]
         output.append({
             'id': product, 'name': (content['name'] if content and content['name'] else product_row[1]),
-            'sku': product_row[2], 'qty': quantity, 'price': updated_price if updated_price is not None else product_row[3]
+            'sku': product_row[2], 'qty': quantity, 'variantId':variant,
+            'variant':next((option[1] for option in detail(product)[2] if option[0]==variant),''),
+            'price': updated_price if updated_price is not None else source_price
         })
     rates = config.get('localRates')
     local = text(data,'city',80,True).casefold() == config.get('officeCity','').casefold()
@@ -510,7 +524,7 @@ def project_request(db,data):
     total = round(furniture + delivery + assembly,2) if all(value is not None for value in (furniture,delivery,assembly)) else None
     desk_ids = next((group['models'] for group in kit.get('groups',[]) if group['id']=='desk'),kit['products'][:1])
     desk = next((row for row in output if row['id'] in desk_ids),None)
-    payload.update(kit=kit['name'],lines=output,roomPlan=quote_plan(data,count,desk,output),estimate={
+    payload.update(kit=kit['name'],finish=text(data,'kitFinish',140),lines=output,roomPlan=quote_plan(data,count,desk,output),estimate={
         'furniture':furniture,'deliveryFrom':delivery,'assembly':assembly,'totalFrom':total
     })
     return payload
@@ -536,7 +550,9 @@ def create_request(data,ip):
         db.execute('DELETE FROM limits WHERE bucket<?',(bucket-2,))
         filename,mime,content=None,None,None
         if kind=='order':
-            payload.update(address=text(data,'address',250), delivery=text(data,'delivery',140),lines=request_order(db,data.get('lines')))
+            payload.update(address=text(data,'address',250), delivery=text(data,'delivery',140),
+                           date=request_deadline(data), task=text(data,'task',1600),
+                           lines=request_order(db,data.get('lines')))
         else:
             payload.update(project_request(db,data))
             filename,mime,content=attachment(data.get('file'))

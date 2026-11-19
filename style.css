@@ -742,7 +742,23 @@ dialog.collection-picker{position:fixed;margin:0;width:min(540px,calc(100vw - 32
 .plan-toolbar .btn,#plan-inspector .btn{min-height:37px;padding:6px 10px;font-size:13px}
 .btn.subtle{background:transparent;color:var(--brand-dark);border-color:transparent}
 .btn.subtle:hover{background:#f3e9e4;color:var(--brand-dark)}
-.floor-stage{display:grid;grid-template-columns:minmax(0,1fr);place-items:center;background:#f4f1ed;border:1px solid var(--line);border-radius:9px;min-height:220px;margin-block:14px 9px;padding:clamp(12px,2.3vw,29px)}
+.floor-stage{display:block;overflow:auto;overscroll-behavior:contain;max-height:min(65dvh,620px);background:#f4f1ed;border:1px solid var(--line);border-radius:9px;min-height:220px;margin-block:14px 9px;padding:0}
+.floor-scroll-area{display:grid;place-items:center;min-width:100%;width:max-content;padding:clamp(12px,2.3vw,29px)}
+.plan-zoom{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
+.plan-zoom .btn{min-height:42px;padding:8px 12px}
+.plan-zoom button:is([data-plan-action="zoom-in"],[data-plan-action="zoom-out"]){min-width:42px;font-size:20px}
+.plan-zoom output{min-width:48px;text-align:center;font-size:14px}
+.plan-library-trigger{display:none}
+body.plan-library-open{overflow:hidden}
+dialog.plan-library-dialog{position:fixed;padding:0;width:min(540px,calc(100vw - 32px));max-width:none;max-height:calc(100dvh - 32px);border-radius:12px;background:var(--paper)}
+.plan-library-dialog[open]{display:grid;grid-template-rows:auto minmax(0,1fr)}
+.plan-library-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.plan-library-heading h2{margin:0}
+.plan-library-close{min-width:44px;min-height:44px;border-radius:7px;background:var(--soft);font-size:26px;line-height:1}
+.plan-library-content{overflow:auto;overscroll-behavior:contain;min-height:0}
+#office-planner .plan-library-dialog .planner-library{padding:16px;border:0;border-radius:0}
+.plan-library-dialog .planner-library>h2{display:none}
+.plan-library-dialog .field{font-size:16px}
 .floor{width:100%;aspect-ratio:var(--floor-ratio);position:relative;isolation:isolate;outline:2px solid #6f6660;border-radius:1px;
  background-color:#fffdfb;background-image:linear-gradient(to right,#e9e2db 1px,transparent 1px),linear-gradient(to bottom,#e9e2db 1px,transparent 1px);background-size:var(--grid-x) var(--grid-y)}
 .plan-object{position:absolute;display:grid;place-items:center;border:1px solid #71594c;border-radius:3px;overflow:hidden;touch-action:none;user-select:none;cursor:grab;line-height:1;min-width:0;min-height:0;font-size:clamp(8px,1.1vw,12px);color:#352a26}
@@ -758,13 +774,18 @@ dialog.collection-picker{position:fixed;margin:0;width:min(540px,calc(100vw - 32
 .plan-object.plan-conflict{background:#f7a89a;border-color:#8b3024}
 .plan-instructions{font-size:13px}
 #plan-inspector{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-top:13px;padding-block:13px;border-block:1px solid var(--line)}
-#plan-inspector .actions,#plan-obstacle-size,#plan-custom-size{grid-column:1/-1}
+#plan-inspector>.actions{align-self:center;margin:0}
+.plan-position-details{grid-column:1/-1}
+.plan-position-details>summary{cursor:pointer;color:var(--brand-dark);font-size:14px;padding-block:6px}
+.plan-position-details form{margin-top:10px}
+#plan-obstacle-size,#plan-custom-size{grid-column:1/-1}
 #plan-obstacle-size[hidden]{display:none}
 #plan-inspector .field{min-height:38px;padding-block:6px}
 .plan-export{margin-top:12px}
 .plan-export .actions{margin-block:var(--action-gap)}
 .plan-export p:empty{display:none}
 @media(max-width:1050px){#plan-inspector{grid-template-columns:1fr}}
-@media(max-width:960px){#office-planner{grid-template-columns:1fr}.planner-sidebar{grid-template-columns:1fr 1fr}}
+@media(max-width:960px){#office-planner{grid-template-columns:1fr}.planner-sidebar{grid-template-columns:1fr}.plan-library-trigger{display:inline-flex}#plan-inspector{gap:7px}.plan-toolbar .actions{gap:8px}.plan-visual{min-width:0}}
 @media(max-width:580px){.planner-sidebar{grid-template-columns:1fr}.floor-stage{min-height:145px}}
 @media(max-width:480px){.plan-metrics{grid-template-columns:1fr 1fr}.plan-metrics div:last-child{grid-column:1/-1}}
+@media(max-width:620px){dialog.plan-library-dialog{inset:0;margin:0;width:100%;height:100dvh;max-height:100dvh;border:0;border-radius:0}.plan-library-content{padding-bottom:max(12px,env(safe-area-inset-bottom))}}

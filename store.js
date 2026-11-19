@@ -45,9 +45,9 @@ const site = (() => {
   let featured;
   const getFeatured = () => (featured ??= get('./data/featured.json').catch(()=>[]));
   let collections;
-  const getCollections = () => (collections ??= get('./data/collections.json').catch(()=>{
+  const getCollections = () => (collections ??= get('./data/collections.json').catch(error=>{
     collections = undefined;
-    return [];
+    throw error;
   }));
   let facts;
   const getCatalogFacts = () => (facts ??= get('./data/catalog-facts.json').catch(error=>{
@@ -80,6 +80,9 @@ const site = (() => {
       const price = data.prices?.currency_code==='RUB' ? Number(data.prices.price) / 10**Number(data.prices.currency_minor_unit) : 0;
       const image = data.images?.[0]?.src;
       return {price:Number.isFinite(price) && price>0 ? price : null,image:image?.startsWith(original+'/wp-content/uploads/') ? image : '',backorder:data.is_on_backorder===true};
+    }).then(result=>{
+      if (result?.price==null) variations.delete(key);
+      return result;
     }).catch(()=>{
       variations.delete(key);
       return null;

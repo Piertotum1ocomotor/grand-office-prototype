@@ -42,6 +42,7 @@ const officePlanner = (() => {
     let message=!savedItems && initial && !initial.items ? fitMessage(initial,false) : '';
     let drag;
     let roomEdit;
+    let zoom=1;
     const undo=[];
     const controller=new AbortController();
     const events={signal:controller.signal};
@@ -75,21 +76,32 @@ const officePlanner = (() => {
       customFields('library-custom-desk',1600,800)+
       button('add','Добавить','btn')+'</section></aside>'+
       '<section class="panel plan-visual"><div class="plan-toolbar"><div><h2>Вид сверху</h2><p id="floor-size" class="small"></p></div><div class="actions">'+
-      button('undo','Отменить')+button('download','Скачать PNG')+button('clear','Очистить','btn subtle')+'</div></div>'+
-      '<div class="floor-stage" id="room-preview"><div class="floor" aria-label="Схема помещения"></div></div>'+
-      '<p class="small plan-instructions">Перетащите предмет. Для точного положения используйте поля ниже или клавиши со стрелками.</p>'+
-      '<p id="room-status" class="plan-status" role="status"></p><dl class="plan-metrics" id="plan-metrics" aria-label="Расчёт планировки"></dl>'+
+      button('library','Добавить мебель','btn plan-library-trigger')+button('undo','Отменить')+button('download','Скачать PNG')+button('clear','Очистить','btn subtle')+'</div></div>'+
+      '<div class="plan-zoom" aria-label="Масштаб схемы">'+
+      '<button type="button" class="btn secondary" data-plan-action="zoom-out" aria-label="Уменьшить схему">−</button>'+
+      '<output id="plan-zoom-level" aria-label="Масштаб">100%</output>'+
+      '<button type="button" class="btn secondary" data-plan-action="zoom-in" aria-label="Увеличить схему">+</button>'+
+      button('zoom-fit','Вписать')+'</div>'+
+      '<div class="floor-stage" id="room-preview"><div class="floor-scroll-area"><div class="floor" aria-label="Схема помещения"></div></div></div>'+
+      '<p id="room-status" class="plan-status" role="status"></p>'+
       '<div id="plan-inspector"><label><span class="field-label">Предмет на плане</span><select class="field" id="plan-selected"></select></label>'+
+      '<div class="actions">'+button('rotate','Повернуть на 90°')+button('copy','Дублировать')+button('delete','Удалить','btn subtle')+'</div>'+
+      '<details class="plan-position-details" '+(matchMedia('(min-width:961px)').matches?'open':'')+'><summary>Положение и размеры</summary>'+
       '<form id="plan-position" class="form-two">'+field('x','От левой стены, м',0,60,0,'0.001')+
       field('y','От верхней стены, м',0,60,0,'0.001')+'</form>'+
       '<form id="plan-obstacle-size" class="form-two" hidden>'+field('width','Ширина, м',0.1,3,0.9,'0.01')+
       field('depth','Глубина, м',0.1,3,0.9,'0.01')+'</form>'+
       '<form id="plan-custom-size" class="form-two" hidden>'+field('width','Ширина стола, мм',300,4000,1600,'1')+
       field('depth','Глубина стола, мм',300,4000,800,'1')+field('height','Высота стола, мм',400,1600,750,'1')+'</form>'+
-      '<div class="actions">'+button('rotate','Повернуть на 90°')+button('copy','Дублировать')+button('delete','Удалить','btn subtle')+'</div></div>'+
+      '</details></div>'+
+      '<p class="small plan-instructions">Перетащите предмет. Для точного положения откройте «Положение и размеры» или используйте клавиши со стрелками.</p>'+
+      '<dl class="plan-metrics" id="plan-metrics" aria-label="Расчёт планировки"></dl>'+
       '<div class="plan-export"><p class="small" id="plan-quote-hint"></p><div class="actions">'+
       button('quote','Запросить смету','btn')+'<button class="btn secondary" type="button" id="plan-to-kit" data-plan-action="kit">Применить к комплекту Riva</button></div>'+
-      '<p class="small">Черновик сохраняется в этом браузере.</p></div></section>';
+      '<p class="small">Черновик сохраняется в этом браузере.</p></div></section>'+
+      '<dialog class="plan-library-dialog" aria-labelledby="plan-library-title"><div class="plan-library-heading">'+
+      '<h2 id="plan-library-title">Добавить мебель</h2><button type="button" class="plan-library-close" data-plan-action="close-library" aria-label="Закрыть библиотеку мебели">×</button></div>'+
+      '<div class="plan-library-content"></div></dialog>';
 
     const floor=find('.floor');
     const position=find('#plan-position');
@@ -100,6 +112,40 @@ const officePlanner = (() => {
     const select=find('#plan-selected');
     const library=find('#plan-library-item');
     const action=name=>find('[data-plan-action="'+name+'"]');
+    const stage=find('#room-preview');
+    const libraryPanel=find('.planner-library');
+    const libraryDialog=find('.plan-library-dialog');
+    const mobile=matchMedia('(max-width:960px)');
+    function syncLibrary() {
+      const destination=mobile.matches?find('.plan-library-content'):find('.planner-sidebar');
+      if (libraryPanel.parentElement!==destination) destination.append(libraryPanel);
+      if (!mobile.matches && libraryDialog.open) libraryDialog.close();
+    }
+    libraryDialog.addEventListener('close',()=>{
+      document.body.classList.remove('plan-library-open');
+      if (mobile.matches) action('library').focus({preventScroll:true});
+    },events);
+    mobile.addEventListener('change',syncLibrary,events);
+    syncLibrary();
+    function scaleFloor() {
+      const area=find('.floor-scroll-area');
+      const padding=getComputedStyle(area);
+      const available=Math.max(60,stage.clientWidth-parseFloat(padding.paddingLeft)-parseFloat(padding.paddingRight)-4);
+      const ratio=state.width/state.depth;
+      const fit=Math.min(available,state.width*105,ratio*470);
+      floor.style.width=fit*zoom+'px';
+      floor.style.maxWidth='none';
+      find('#plan-zoom-level').textContent=Math.round(zoom*100)+'%';
+      action('zoom-out').disabled=zoom<=1;
+      action('zoom-in').disabled=zoom>=4;
+    }
+    let stageWidth;
+    const resizeObserver=new ResizeObserver(()=>{
+      if (stageWidth===stage.clientWidth) return;
+      stageWidth=stage.clientWidth;
+      scaleFloor();
+    });
+    resizeObserver.observe(stage);
     const active=()=>state.items.find(item=>item.id===selected);
     const snapshot=()=>structuredClone(state);
     function fitMessage(result,keep=true) {
@@ -201,8 +247,7 @@ const officePlanner = (() => {
       const problems=workspace.conflicts(state);
       const ratio=state.width/state.depth;
       floor.style.setProperty('--floor-ratio',ratio);
-      floor.style.width=Math.min(state.width*105,ratio*470)+'px';
-      floor.style.maxWidth='min(100%, '+ratio*470+'px)';
+      scaleFloor();
       floor.style.setProperty('--grid-x',(0.5/state.width*100)+'%');
       floor.style.setProperty('--grid-y',(0.5/state.depth*100)+'%');
       find('#floor-size').textContent=offices[state.office]+' · '+format.format(state.width)+' × '+format.format(state.depth)+' м · клетка 0,5 м';
@@ -258,9 +303,25 @@ const officePlanner = (() => {
     }
     function invoke(name) {
       const item=active();
+      if (name==='library') {
+        libraryDialog.showModal();
+        document.body.classList.add('plan-library-open');
+      }
+      if (name==='close-library') libraryDialog.close();
+      if (['zoom-in','zoom-out','zoom-fit'].includes(name)) {
+        const next=name==='zoom-fit'?1:Math.min(4,Math.max(1,zoom+(name==='zoom-in'?.25:-.25)));
+        const factor=next/zoom;
+        const left=(stage.scrollLeft+stage.clientWidth/2)*factor-stage.clientWidth/2;
+        const top=(stage.scrollTop+stage.clientHeight/2)*factor-stage.clientHeight/2;
+        zoom=next;
+        scaleFloor();
+        stage.scrollTo({left:name==='zoom-fit'?0:left,top:name==='zoom-fit'?0:top,behavior:'instant'});
+      }
       if (name==='add') {
         const model=type==='desk' && library.value==='0' ? readCustom(find('#library-custom-desk')) : preset(type,Number(library.value));
+        const before=state.items.length;
         if (model) place({...model,rotation:0});
+        if (libraryDialog.open && state.items.length>before) libraryDialog.close();
       }
       if (name==='copy' && item) place(item);
       if (name==='rotate' && item) replace({...item,rotation:(item.rotation+90)%360});
@@ -427,7 +488,12 @@ const officePlanner = (() => {
     syncPreset();
     render();
     save();
-    return ()=>controller.abort();
+    return ()=>{
+      controller.abort();
+      resizeObserver.disconnect();
+      if (libraryDialog.open) libraryDialog.close();
+      document.body.classList.remove('plan-library-open');
+    };
   }
 
   return {mount};

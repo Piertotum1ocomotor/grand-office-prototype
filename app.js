@@ -131,8 +131,11 @@ const catById = new Map();
 const catBySlug = new Map();
 const catChildren = new Map();
 const productById = new Map();
+const productDetails = new Map();
 const collectionsById = new Map();
 let collectionSections = [];
+let collectionDirectoryReady = false;
+let collectionDirectoryError = false;
 function prepareCategories(categories) {
   categories.forEach((c) => {
     catById.set(c.id,c);
@@ -371,7 +374,7 @@ function collectionScope(category) {
 }
 
 function showCollections(settings, category) {
-  return collectionSections.length>0 && (!category && settings.get('view')==='collections' ||
+  return settings.get('view')==='collections' && !collectionCategory(category) || collectionSections.length>0 && (
     Boolean(collectionScope(category)) && settings.get('view')!=='products' &&
     !['q','t','p','sort',...filterFields].some(key=>settings.get(key)));
 }
@@ -556,7 +559,7 @@ function collectionOverview(settings, selected) {
     '<label class="sr-only" for="collection-query">Название коллекции</label><input class="field" type="search" id="collection-query" name="cq" value="'+
     e(query)+'" maxlength="100" placeholder="Название коллекции"><button class="btn secondary" type="submit">Найти</button></form></div>'+
     (rows.length?'<p class="count-label">Коллекций: '+catalogNumber.format(rows.length)+'</p>'+sections+pagination :
-      '<p class="empty">Коллекции с таким названием не найдены. <a class="text-link" href="'+e(toOverview({cq:null,cp:null}))+'">Сбросить поиск</a></p>'),levels);
+      '<p class="empty">'+(query?'Коллекции с таким названием не найдены. <a class="text-link" href="'+e(toOverview({cq:null,cp:null}))+'">Сбросить поиск</a>':'В этом разделе пока нет коллекций.')+'</p>'),levels);
 }
 
 function collectionChoices(type, selected) {
@@ -954,7 +957,7 @@ function cartPage() {
   const catalog = catalogOrigin(site.session('basket-origin','')) || '#/catalog';
   if (!cart.length) return page('Корзина','<p class="intro">Добавьте мебель из каталога.</p><a class="btn" href="'+e(catalog)+'">В каталог</a>');
   return page('Корзина',`<div class="cart-layout"><section aria-label="Товары">${cart.map((row,i)=>`<div class="cart-row">
-      <div class="cart-photo">${photo(row.image || '')}</div><div class="cart-item"><a href="#/product/${row.id}">${e(productTitle(row.name))}</a>
+      <div class="cart-photo">${photo(row.image || '')}</div><div class="cart-item"><a href="#/product/${row.id}${row.choice?'?variant='+row.choice:''}">${e(productTitle(row.name))}</a>
         ${cartItemDetails(row)?'<p class="small">'+e(cartItemDetails(row))+'</p>':''}<p class="small">${money(row.price)}${row.price!=null?' за шт.':''}</p></div>
       <div class="cart-quantity"><label class="field-label" for="cart-qty-${i}">Количество</label><div class="cart-stepper">
         <button type="button" data-cart-step="-1" aria-label="Уменьшить количество" ${row.qty<=1?'disabled':''}>−</button>
@@ -977,18 +980,69 @@ function contactFields() {
     <label><span class="field-label">Телефон или электронная почта</span><input class="field" name="contact" maxlength="140" autocomplete="off" required></label>
     ${hasBackend ? '<label class="consent"><input type="checkbox" name="consent" required> Согласен на обработку данных для ответа на обращение. <a class="text-link" href="https://grand-office59.ru/privacy-policy/">Политика конфиденциальности</a></label>' : ''}`;
 }
+
+function requestDraftKey(form) {
+  if (form.dataset.draftKey) return form.dataset.draftKey;
+  form.dataset.draftKey='grand-request-'+[form.dataset.kind,form.dataset.topic || '',form.dataset.product || '',
+    form.dataset.variant || '',form.dataset.case || '',form.dataset.drawnPlan || '',
+    form.dataset.kind==='project'?getRoute().args.get('section') || '':''].join('|');
+  return form.dataset.draftKey;
+}
+
+function saveRequestDraft(form=document.querySelector('#request-form')) {
+  if (!form || form.dataset.completed) return;
+  const values={};
+  for (const element of form.elements) {
+    if (!element.name || element.type==='file' || element.type==='hidden' || element.name==='token') continue;
+    values[element.name]=element.type==='checkbox'?element.checked:element.value;
+  }
+  try {sessionStorage.setItem(requestDraftKey(form),JSON.stringify(values));} catch {}
+}
+
+function restoreRequestDraft() {
+  const form=main.querySelector('#request-form');
+  if (!form) return;
+  let values;
+  try {values=JSON.parse(sessionStorage.getItem(requestDraftKey(form)) || 'null');} catch {}
+  if (!values || typeof values!=='object') return;
+  for (const element of form.elements) {
+    if (!element.name || element.type==='file' || element.type==='hidden' || !Object.hasOwn(values,element.name)) continue;
+    if (element.name==='kit' && getRoute().args.get('section')==='kit') continue;
+    if (element.name==='seats' && (getRoute().args.has('seats') || form.dataset.drawnPlan)) continue;
+    if (element.type==='checkbox') element.checked=values[element.name]===true;
+    else if (typeof values[element.name]==='string') element.value=values[element.name];
+  }
+  const seats=validSeats(form.elements.seats?.value);
+  if (form.elements.contact?.value) validateRequestContact(form);
+  if (form.elements.kit?.value && seats && main.querySelector('#set-count')) syncQuoteCount(seats);
+}
+
+function validateRequestContact(form) {
+  const field=form.elements.contact;
+  const value=field.value.trim();
+  const valid=/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) || value.replace(/\D/g,'').length>=7;
+  field.setCustomValidity(valid?'':'Укажите телефон или электронную почту.');
+  return valid;
+}
+
 function checkoutPage() {
   if (!cart.length) return cartPage();
   return page('Запрос расчёта',`<div class="project-demo checkout"><form id="request-form" data-kind="order" class="panel">${transportNote()}
     <label><span class="field-label">Город</span><input class="field" name="city" value="${e(city)}" required maxlength="80"></label>
     <label><span class="field-label">Адрес доставки</span><input class="field" name="address" maxlength="250" autocomplete="street-address"></label>
     <label><span class="field-label">Дополнительные услуги</span><select class="field" name="delivery"><option>Доставка</option><option>Доставка и сборка</option><option>Доставка, подъём и сборка</option><option>Самовывоз по согласованию</option></select></label>
+    <label><span class="field-label">К какой дате офис должен быть готов</span><input class="field" type="date" name="date"></label>
+    <label><span class="field-label">Комментарий к заказу</span><textarea class="field" name="task" rows="3" maxlength="1600" placeholder="Бюджет, условия доставки и подъёма"></textarea></label>
     ${contactFields()}<button class="btn" type="submit">${hasBackend?'Отправить запрос':'Открыть письмо с запросом'}</button>
     <p class="small">Стоимость услуг и способ оплаты согласует менеджер.</p><p class="result" role="status" hidden></p></form>
     <aside class="panel cart-summary"><h2>Состав запроса</h2><div class="summary">${cart.map((row)=>`<div><span>${e(productTitle(row.name))} × ${row.qty} шт.${cartItemDetails(row)?'<small>'+e(cartItemDetails(row))+'</small>':''}</span><span>${rowAmount(row)}</span></div>`).join('')}<div><span>Мебель</span><strong>${furnitureTotal()}</strong></div><div><span>Доставка и другие услуги</span><span>По запросу</span></div></div></aside></div>`,[['Корзина','#/cart']]);
 }
 
 let kitPreferences = site.session('kit-preferences',{});
+const kitVariantPrices = new Map();
+let kitPricesLoading = false;
+let kitPriceRevision = 0;
+let kitFinishNotice = '';
 let roomDraft = site.session('room-plan',{}) || {};
 let quotePlan = site.session('quote-plan',null);
 let cleanupPlanner;
@@ -1013,13 +1067,68 @@ function kitSelection(qty) {
     const saved = kitPreferences[group.id] || {};
     const available = group.models.filter(id=>productById.has(id));
     const id = available.includes(saved.id) || (group.optional && saved.id===0) ? saved.id : (group.optional ? 0 : available[0]);
-    return {group,id,product:productById.get(id),qty:id ? (validSeats(saved.qty) || qty) : 0};
+    const product=productById.get(id);
+    const options=productDetails.get(id)?.[2] || [];
+    const option=group.id==='chair' ? options.find(option=>option[0]===saved.choice) :
+      options.find(option=>finishKey(option[1])===finishKey(kitPreferences.finish));
+    return {group,id,product,option,choice:option?.[0] || 0,qty:id ? (validSeats(saved.qty) || qty) : 0};
   });
+}
+
+function kitFinishes(qty) {
+  const selected=kitSelection(qty).filter(item=>item.id && item.group.id!=='chair');
+  const finishes=selected.map(item=>{
+    const options=productDetails.get(item.id)?.[2] || [];
+    return options.filter(option=>options.filter(other=>finishKey(other[1])===finishKey(option[1])).length===1)
+      .map(option=>option[1]);
+  });
+  return finishes.length ? finishes[0].filter(label=>finishes.every(options=>options.some(other=>finishKey(other)===finishKey(label)))) : [];
+}
+
+function kitFinishFields(qty) {
+  const finishes=kitFinishes(qty);
+  const chair=kitSelection(qty).find(item=>item.group.id==='chair');
+  const options=productDetails.get(chair?.id)?.[2] || [];
+  return '<div class="form-two"><label><span class="field-label">Отделка столов и тумб</span><select class="field" id="kit-finish">'+
+    '<option value="">Подобрать с менеджером</option>'+finishes.map(label=>'<option value="'+e(label)+'" '+
+      (finishKey(label)===finishKey(kitPreferences.finish)?'selected':'')+'>'+e(label)+'</option>').join('')+'</select></label>'+
+    (options.length?'<label><span class="field-label">Цвет кресла</span><select class="field" id="kit-chair-choice"><option value="">Подобрать с менеджером</option>'+
+      options.map(option=>'<option value="'+option[0]+'" '+(chair.choice===option[0]?'selected':'')+'>'+e(option[1])+'</option>').join('')+'</select></label>':'')+
+    '</div>'+(finishes.length?'':'<p class="small">У выбранных моделей нет общей отделки. Измените модель или оставьте подбор менеджеру.</p>');
+}
+
+function syncKitFinishes(qty) {
+  if (kitPreferences.finish && !kitFinishes(qty).some(label=>finishKey(label)===finishKey(kitPreferences.finish))) {
+    kitPreferences.finish='';
+    kitFinishNotice='У выбранных моделей другая отделка. Выберите общую отделку или оставьте подбор менеджеру.';
+    site.save('kit-preferences',kitPreferences);
+  }
+  const fields=main.querySelector('#kit-finishes');
+  if (fields) fields.innerHTML=kitFinishFields(qty);
+}
+
+async function loadKitVariantPrices(qty) {
+  const selected=kitSelection(qty).filter(item=>item.choice && !kitVariantPrices.has(item.id+':'+item.choice));
+  await Promise.all(selected.map(async item=>{
+    const value=await site.variation(item.id,item.choice);
+    if (value?.price!=null) kitVariantPrices.set(item.id+':'+item.choice,value);
+  }));
+}
+
+async function updateKitPrices() {
+  const current=++kitPriceRevision;
+  kitPricesLoading=true;
+  updateEstimate();
+  await loadKitVariantPrices(Number(document.querySelector('#set-count').value));
+  if (current!==kitPriceRevision) return;
+  kitPricesLoading=false;
+  updateEstimate();
 }
 
 function kitEstimate(qty, destination) {
   const selection = kitSelection(qty);
-  const products = selection.filter(item=>item.product && item.qty);
+  const products = selection.filter(item=>item.product && item.qty).map(item=>({...item,
+    product:item.option?{...item.product,price:priceOf(item.product,item.option,kitVariantPrices.get(item.id+':'+item.choice)),max:null}:item.product}));
   const ready = selection.length > 0 && selection.every(item=>item.group.optional || item.product);
   const priced = ready && products.every(item=>item.product.price!=null);
   const value = priced ? Math.round(products.reduce((sum,item)=>sum+item.product.price*item.qty,0)*100)/100 : null;
@@ -1088,7 +1197,8 @@ function updateKitChoice(element) {
   site.save('kit-preferences',kitPreferences);
   const count = Number(document.querySelector('#set-count').value);
   syncKitRows(count);
-  updateEstimate();
+  syncKitFinishes(count);
+  updateKitPrices();
 }
 
 function projectPage(target, option, example, qty, useKit, drawnPlan) {
@@ -1097,9 +1207,9 @@ function projectPage(target, option, example, qty, useKit, drawnPlan) {
   return `<div class="shell page">${crumbs([['Комплектация офисов']])}<section class="project-hero"><div class="copy"><h1>Комплектация офисов</h1><p class="intro">Подберём мебель, подготовим планировку и смету, организуем доставку и монтаж.</p><div class="actions"><button class="btn" data-scroll="project-form">Получить расчёт</button><a class="btn secondary" href="#/project?section=kit">Собрать комплект Riva</a></div><p class="small form-hint">${planHelp}</p></div>${photo('./assets/meeting.webp','Стол и кресла в переговорной')}</section>
     <section class="panel project-design"><h2>Бесплатный дизайн-проект офиса</h2><p>Пришлите план помещения или договоритесь с менеджером о замере. Покажем расстановку мебели до поставки и подготовим смету под ваш бюджет. Можно обсудить проект в нашем шоуруме.</p><a class="text-link" href="#/showroom">Спланировать визит</a></section>
     <div class="project-demo ${useKit?'kit-first':'quote-first'}"><section class="panel" id="kit-builder" tabindex="-1"><h2>Соберите комплект Riva</h2><p class="small">Выберите модели и количество. При смене числа мест количество столов и кресел пересчитывается.</p>
-      <label class="field-label" for="set-count">Количество рабочих мест</label><select class="field" id="set-count">${choices.map(count=>`<option value="${count}" ${count===qty?'selected':''}>${seatsLabel(count)}</option>`).join('')}</select><div class="kit-choices">${kitRows(qty)}</div><div class="summary" id="estimate" aria-live="polite"></div>
+      <label class="field-label" for="set-count">Количество рабочих мест</label><select class="field" id="set-count">${choices.map(count=>`<option value="${count}" ${count===qty?'selected':''}>${seatsLabel(count)}</option>`).join('')}</select><div class="kit-choices">${kitRows(qty)}</div><div id="kit-finishes">${kitFinishFields(qty)}</div><div class="summary" id="estimate" aria-live="polite"></div>
       <div id="kit-availability"></div><p class="small" id="kit-count-note" aria-live="polite"></p>
-      <div class="actions kit-actions"><button class="btn" data-check-kit hidden></button><button class="btn secondary" data-save-spec>Скачать состав</button><button class="btn secondary" data-download-kit-plan hidden>Скачать план PNG</button></div>
+      <div class="actions kit-actions"><button class="btn" data-check-kit hidden></button><button class="btn secondary" data-save-spec>Скачать состав</button><button class="btn secondary" data-retry-kit-prices hidden>Обновить цены</button><button class="btn secondary" data-download-kit-plan hidden>Скачать план PNG</button></div>
       <p class="small"><a class="text-link" id="planner-link" href="#/planner?seats=${qty}">Открыть планировщик</a></p></section>
       <form class="panel" id="request-form" data-kind="project" ${drawnPlan?'data-drawn-plan="1"':''} ${productRequestAttributes(target,option)} ${example?'data-case="'+e(example.id)+'"':''}><h2 id="project-form" tabindex="-1">${target?'Запросить расчёт по товару':'Запросить смету'}</h2>
       ${transportNote()}
@@ -1128,7 +1238,7 @@ function updateEstimate() {
   const qty = Number(document.querySelector('#set-count').value);
   const quote = kitEstimate(qty,form.elements.city.value);
   const priceLabel = (amount, from = false) => amount == null ? 'По запросу' : (from ? 'от ' : '') + format(amount);
-  target.innerHTML = quote.products.map(({product,qty})=>`<div class="priced-item"><span><a class="text-link" href="#/product/${product.id}">${e(product.name.replace(dimensionPattern,'').trim())}</a><small>${qty} шт. × ${priceLabel(product.price,product.max>product.price)}</small></span><strong>${priceLabel(product.price==null?null:product.price*qty,product.max>product.price)}</strong></div>`).join('') +
+  target.innerHTML = quote.products.map(({product,qty,choice,option})=>`<div class="priced-item"><span><a class="text-link" href="#/product/${product.id}${choice?'?variant='+choice:''}">${e(product.name.replace(dimensionPattern,'').trim())}</a><small>${option?e(option[1])+' · ':''}${qty} шт. × ${priceLabel(product.price,product.max>product.price)}</small></span><strong>${priceLabel(product.price==null?null:product.price*qty,product.max>product.price)}</strong></div>`).join('') +
     `
     <div><span>Стоимость мебели</span><strong>${priceLabel(quote.value,quote.from)}</strong></div>
     <div><span>Доставка</span><strong>${priceLabel(quote.delivery,true)}</strong></div>
@@ -1141,10 +1251,13 @@ function updateEstimate() {
   const check = document.querySelector('[data-check-kit]');
   check.hidden = !quote.ready || Boolean(form.dataset.product || form.dataset.drawnPlan);
   check.textContent = 'Проверить наличие на ' + seatsLabel(qty);
-  document.querySelector('[data-save-spec]').disabled = !quote.ready;
+  check.disabled=kitPricesLoading;
+  document.querySelector('[data-save-spec]').disabled = !quote.ready || kitPricesLoading;
+  document.querySelector('[data-retry-kit-prices]').hidden=kitPricesLoading || !quote.products.some(item=>item.choice && item.product.price==null);
   document.querySelector('#planner-link').href = '#/planner?seats=' + qty;
   prepareLinks(document.querySelector('#kit-builder'));
   const usesKit = form.elements.kit.value === officeConfig.workspaceKit?.id;
+  if (!form.dataset.completed) form.querySelector('[type="submit"]').disabled=usesKit && kitPricesLoading;
   if (form.elements.seats) form.elements.seats.required = usesKit;
   document.querySelector('#quote-kit').textContent = usesKit
     ? 'Комплект Riva: ' + seatsLabel(qty) + '. Проверим наличие всей партии.'
@@ -1152,7 +1265,7 @@ function updateEstimate() {
   const adjusted = quote.products.filter(({group,qty:units})=>!group.optional && units!==qty);
   const plan=currentKitPlan(qty);
   const planNote = kitPreferences.plan ? (plan ? (hasBackend?'Схема помещения приложится к смете комплекта.':'Скачайте схему и приложите её к письму.') : 'Схема сохранена в черновике. Примените её снова после изменения состава.') : '';
-  document.querySelector('#kit-count-note').textContent = [adjusted.length?'Количество изменено вручную · '+adjusted.map(({group,qty:units})=>group.label+' '+units+' шт.').join(', ')+'.':'',planNote].filter(Boolean).join(' ');
+  document.querySelector('#kit-count-note').textContent = [kitPricesLoading?'Обновляем цены выбранных вариантов…':'',kitFinishNotice,adjusted.length?'Количество изменено вручную · '+adjusted.map(({group,qty:units})=>group.label+' '+units+' шт.').join(', ')+'.':'',planNote].filter(Boolean).join(' ');
   document.querySelector('[data-download-kit-plan]').hidden=plan?.v!==2;
 }
 
@@ -1164,6 +1277,8 @@ function syncQuoteCount(qty) {
   }
   if (!Array.from(select.options).some(option=>Number(option.value)===qty)) select.add(new Option(seatsLabel(qty),qty));
   select.value = String(qty);
+  kitPreferences.seats=qty;
+  site.save('kit-preferences',kitPreferences);
   syncKitRows(qty);
   updateEstimate();
 }
@@ -1191,6 +1306,7 @@ function mountPlanner(args) {
     },
     onKit(plan,selection) {
       resetKitCounts();
+      kitPreferences.seats=selection.seats;
       kitPreferences.storage={id:0};
       for (const item of selection.groups) kitPreferences[item.type]={id:item.id,...(item.type==='storage'?{qty:item.count}:{})};
       kitPreferences.plan={...plan,seats:selection.seats,desk:selection.desk};
@@ -1413,11 +1529,16 @@ const catalogueById = new Map();
 const loadConfig=site.config.then(config=>{officeConfig=config;});
 const catalogPageNumber = (settings,total) => Math.min(total,Math.max(1,parseInt(settings.get('p') || '1',10) || 1));
 async function loadCollectionDirectory() {
-  if (collectionsById.size) return;
-  const [sections,metadata] = await Promise.all([
-    site.getCollections(),
-    catById.size ? null : site.browse('sections').catch(()=>null)
-  ]);
+  if (collectionDirectoryReady) return;
+  let sections,metadata;
+  try {
+    [sections,metadata] = await Promise.all([site.getCollections(),catById.size ? null : site.browse('sections')]);
+    if (!Array.isArray(sections)) throw new Error('Коллекции недоступны');
+    collectionDirectoryError=false;
+  } catch(error) {
+    collectionDirectoryError=true;
+    throw error;
+  }
   if (!catById.size && metadata) prepareCategories(metadata.categories);
   if (collectionsById.size || !catById.size) return;
   collectionSections = sections.filter(section=>catById.has(section.id)).map(section=>({...section,
@@ -1429,6 +1550,7 @@ async function loadCollectionDirectory() {
       for (const item of group.items) collectionsById.set(item.id,item);
     }
   }
+  collectionDirectoryReady=true;
 }
 
 async function loadCatalog(settings) {
@@ -1476,6 +1598,7 @@ async function loadCatalog(settings) {
 async function loadDetail(id) {
   if (!Number.isInteger(id) || id<1) return null;
   const data = await site.getDetails(id).catch(()=>null);
+  if (data) productDetails.set(id,data);
   if (data?.[6]) productById.set(id,fromProduct(data[6]));
   return data;
 }
@@ -1487,7 +1610,7 @@ async function loadProjectItems(product) {
     for (const row of entries) if (!productById.has(row[0])) productById.set(row[0],fromProduct(row));
   }
   const ids = [...new Set([...kitGroups().flatMap(group=>group.models),product].filter(Boolean))];
-  await Promise.all(ids.filter(id=>!productById.has(id)).map(loadDetail));
+  await Promise.all(ids.filter(id=>!productDetails.has(id)).map(loadDetail));
 }
 
 function productChoiceFor(id, args, options) {
@@ -1502,12 +1625,16 @@ function productChoiceFor(id, args, options) {
 }
 
 async function render(move = false, catalogScroll) {
+  saveRequestDraft();
   const current = ++revision;
+  main.inert=true;
+  main.setAttribute('aria-busy','true');
   const {key,id,args} = getRoute();
   const product = Number(id);
   const target = Number(args.get('product'));
   const example = key==='project' ? site.projects.find(item=>item.id===args.get('case')) : null;
   const useKit = key==='project' && args.get('section')==='kit' && !target;
+  const projectSeats=validSeats(args.get('seats')) || validSeats(kitPreferences.seats) || 4;
   const drawnPlan=key==='project' && !target && !useKit && args.get('plan')==='1' && quotePlan?.v===2 ? quotePlan : null;
   let details, variant, quoteOption, productChoice, correctedRoute;
   let catalogOptions, preview, catalogError=false;
@@ -1515,6 +1642,8 @@ async function render(move = false, catalogScroll) {
   document.querySelectorAll('[data-nav]').forEach(a=> a.dataset.nav===key ? a.setAttribute('aria-current','page'):a.removeAttribute('aria-current'));
   const search = document.querySelector('#search-input');
   if (key==='catalog') {
+    const loading=main.querySelector('.count-label');
+    if (loading) loading.textContent='Обновляем каталог…';
     search.value=args.get('q') || '';
     if (!catalog && !main.querySelector('h1')) main.innerHTML = '<p class="shell page" role="status">Загрузка каталога…</p>';
     catalogOptions=catalogSettings(args);
@@ -1532,25 +1661,37 @@ async function render(move = false, catalogScroll) {
     } catch { catalogError=true; }
   } else if (key==='project' || key==='planner') {
     await loadProjectItems();
+    if (key==='project') {
+      if (kitPreferences.finish && !kitFinishes(projectSeats).some(label=>finishKey(label)===finishKey(kitPreferences.finish))) {
+        kitPreferences.finish='';
+        kitFinishNotice='Выберите общую отделку выбранных моделей.';
+        site.save('kit-preferences',kitPreferences);
+      }
+      await loadKitVariantPrices(projectSeats);
+    }
     if (target) details=await loadDetail(target);
   } else if (key==='delivery') {
     await loadConfig;
     if (target) details=await loadDetail(target);
   } else if (key==='product') {
     await loadCatalogFacts().catch(()=>null);
-    [details] = await Promise.all([loadDetail(product),loadCollectionDirectory(),loadConfig]);
+    [details] = await Promise.all([loadDetail(product),loadCollectionDirectory().catch(()=>null),loadConfig]);
     productChoice=productChoiceFor(product,args,details?.[2] || []);
     if (details?.[2]?.some(item=>item[0]===productChoice)) variant = await site.variation(product,productChoice);
   } else await loadConfig;
   if (current!==revision) return;
+  main.inert=false;
+  main.removeAttribute('aria-busy');
   if (correctedRoute) replaceRoute(correctedRoute);
   cleanupPlanner?.();
   cleanupPlanner=null;
   if (target) quoteOption=details?.[2]?.find(option=>option[0]===Number(args.get('variant')));
   if (!key || key==='main') main.innerHTML=home();
-  else if (key==='catalog') main.innerHTML=catalogPage(catalogOptions,preview,catalogError || !catalog);
+  else if (key==='catalog') main.innerHTML=collectionDirectoryError
+    ? page('Коллекции','<p class="intro">Не удалось загрузить коллекции. Проверьте соединение и повторите загрузку.</p><button class="btn" type="button" data-retry-catalog>Повторить загрузку</button>')
+    : catalogPage(catalogOptions,preview,catalogError || !catalog);
   else if (key==='project') {
-    main.innerHTML=projectPage(productById.get(target),quoteOption,example,validSeats(args.get('seats')) || 4,useKit,drawnPlan);
+    main.innerHTML=projectPage(productById.get(target),quoteOption,example,projectSeats,useKit,drawnPlan);
     if (!useKit) document.querySelector('#kit-builder').before(document.querySelector('#request-form'));
     updateEstimate();
   } else if (key==='planner') {
@@ -1561,6 +1702,8 @@ async function render(move = false, catalogScroll) {
   else if (key==='checkout') main.innerHTML=checkoutPage();
   else if (key==='delivery') main.innerHTML=deliveryPage(productById.get(target),quoteOption);
   else main.innerHTML=infoPage(key,id);
+  restoreRequestDraft();
+  if (main.querySelector('#estimate')) updateEstimate();
   if (useKit) {
     const kit=document.querySelector('#kit-builder');
     kit?.focus({preventScroll:true});
@@ -1607,7 +1750,7 @@ function kitSummary(qty, destination) {
   const plan = currentKitPlan(qty);
   const layout = plan && workspace.layouts.find(([key])=>key===plan.layout);
   return ['Комплект Riva на ' + seatsLabel(qty),
-    ...quote.products.map(({product,qty})=>[product.name,product.sku ? 'арт. '+product.sku:'',qty+' шт.',money(product.price,product.max)].filter(Boolean).join(' · ')),
+    ...quote.products.map(({product,qty,option})=>[product.name,product.sku ? 'арт. '+product.sku:'',option?.[1],qty+' шт.',money(product.price,product.max)].filter(Boolean).join(' · ')),
     ...pricing,
     ...(plan?.v===2 ? planText(plan).slice(0,1) : layout ? ['Помещение: '+plan.width+' × '+plan.depth+' м. '+layout[1]+', расстояние '+plan.gap+' м.'] : [])];
 }
@@ -1643,6 +1786,14 @@ main.addEventListener('toggle',event=>{
 window.addEventListener('resize',()=>main.querySelectorAll('.project-track').forEach(syncCarousel));
 
 main.addEventListener('click', async (event)=>{
+  if (event.target.closest('[data-retry-kit-prices]')) {
+    await updateKitPrices();
+    return;
+  }
+  if (event.target.closest('[data-retry-catalog]')) {
+    await render();
+    return;
+  }
   const collectionButton=event.target.closest('[data-choose-collection]');
   if (collectionButton) {
     openCollectionPicker(collectionButton);
@@ -1749,6 +1900,7 @@ main.addEventListener('click', async (event)=>{
 });
 main.addEventListener('change',event=>{
   const element=event.target;
+  if (element.form?.id==='request-form') saveRequestDraft(element.form);
   if (element.id==='catalog-sort' || element.id==='catalog-finish') {
     const key = element.id==='catalog-sort' ? 'sort' : 'finish';
     const address=catalogLink(catalogSettings(getRoute().args),{[key]:element.value,p:null});
@@ -1758,9 +1910,17 @@ main.addEventListener('change',event=>{
   if (element.id==='set-count') {
     const form = document.querySelector('#request-form');
     resetKitCounts();
+    kitPreferences.seats=Number(element.value);
+    site.save('kit-preferences',kitPreferences);
     if (form.elements.seats && form.elements.kit.value) form.elements.seats.value=element.value;
     syncKitRows(Number(element.value));
     updateEstimate();
+  }
+  if (element.id==='kit-finish' || element.id==='kit-chair-choice') {
+    if (element.id==='kit-finish') {kitPreferences.finish=element.value;kitFinishNotice='';}
+    else kitPreferences.chair={...(kitPreferences.chair || {}),choice:Number(element.value)};
+    site.save('kit-preferences',kitPreferences);
+    updateKitPrices();
   }
   if (element.name==='kit') {
     if (element.value) {
@@ -1795,6 +1955,10 @@ main.addEventListener('change',event=>{
 
 main.addEventListener('input',event=>{
   const input=event.target;
+  if (input.form?.id==='request-form') {
+    if (input.name==='contact') validateRequestContact(input.form);
+    saveRequestDraft(input.form);
+  }
   if (input.form?.id==='filters' && rangeFields.includes(input.name)) {
     const form=input.form;
     for (const key of rangeFields) form.elements[key].setCustomValidity('');
@@ -1823,6 +1987,8 @@ function mailBody(kind, data) {
     lines.push('Адрес: '+(data.address||'уточняется'),'Получение: '+data.delivery,
       ...cart.map(row=>[productTitle(row.name),cartItemDetails(row),row.qty+' шт.',rowAmount(row)].filter(Boolean).join(' · ')),
       'Мебель по расчёту сайта: '+furnitureTotal(),
+      data.date?'Дата готовности офиса после монтажа: '+data.date.split('-').reverse().join('.'):'',
+      data.task?'Комментарий к заказу: '+data.task:'',
       'Просьба подтвердить наличие, итоговую стоимость и срок поставки с учётом услуг.');
   }
   else {
@@ -1883,6 +2049,9 @@ main.addEventListener('submit',async(event)=>{
     return;
   }
   if (form.id!=='request-form') return;
+  if (form.elements.kit?.value && kitPricesLoading) return;
+  if (!validateRequestContact(form)) {form.reportValidity();return;}
+  saveRequestDraft(form);
   const data=Object.fromEntries(new FormData(form));
   const kind=form.dataset.kind;
   if (form.dataset.topic) data.topic=form.dataset.topic;
@@ -1919,9 +2088,11 @@ main.addEventListener('submit',async(event)=>{
   try {
     data.file=await toEncoded(data.file);
     if (kind==='project' && data.kit) {
-      data.kitLines=kitEstimate(Number(data.seats),data.city).products.map(({group,product,qty})=>({group:group.id,id:product.id,qty}));
+      data.kitLines=kitEstimate(Number(data.seats),data.city).products.map(({group,product,qty,choice})=>({group:group.id,id:product.id,qty,choice}));
+      data.kitFinish=kitPreferences.finish || '';
     }
     const receipt=await site.post('requests',{kind,token:form.dataset.token,...data,lines:kind==='order'?cart.map(({id,choice,qty})=>({id,choice,qty})):[]});
+    try {sessionStorage.removeItem(requestDraftKey(form));} catch {}
     status.textContent='Заявка № '+receipt.id+' принята. Менеджер свяжется с вами для подтверждения.';
     if (kind==='order') {cart=[];saveCart();form.dataset.completed='true';}
     form.reset();
@@ -1944,7 +2115,8 @@ async function showSearchSuggestions() {
   const current = ++searchRevision;
   const value = searchInput.value.trim();
   if (collectionSearchKey(value).length<2) return hideSearchSuggestions();
-  await Promise.all([loadCollectionDirectory(),loadCatalogFacts().catch(()=>null)]);
+  try {await Promise.all([loadCollectionDirectory(),loadCatalogFacts().catch(()=>null)]);}
+  catch {hideSearchSuggestions();return;}
   if (current!==searchRevision || !searchArea.contains(document.activeElement)) return;
   const search = collectionSearch(value);
   const {matches} = search;
@@ -1985,7 +2157,10 @@ searchSuggestions.addEventListener('click',event=>{
 document.querySelector('#global-search').addEventListener('submit',async event=>{
   event.preventDefault();
   const value = searchInput.value.trim();
-  if (collectionSearchKey(value).length>=2) await Promise.all([loadCollectionDirectory(),loadCatalogFacts().catch(()=>null)]);
+  if (collectionSearchKey(value).length>=2) {
+    try {await Promise.all([loadCollectionDirectory(),loadCatalogFacts().catch(()=>null)]);}
+    catch {navigate(catalogLink('',{view:'collections',cq:value}));return;}
+  }
   if (value!==searchInput.value.trim()) return;
   const search = collectionSearch(value);
   const exact = search.matches.filter(row=>row.rank===3);
