@@ -552,7 +552,7 @@ function collectionOverview(settings, selected) {
   return page(title,'<div class="collection-tools"><form id="collection-search" role="search" aria-label="Поиск коллекции">'+
     '<label class="sr-only" for="collection-query">Название коллекции</label><input class="field" type="search" id="collection-query" name="cq" value="'+
     e(query)+'" maxlength="100" placeholder="Название коллекции"><button class="btn secondary" type="submit">Найти</button></form>'+
-    '<details class="collection-browse-filters" '+(section?'open':'')+'><summary>Назначение и класс'+(section?' · '+e(tier?.label || section.name):'')+'</summary><div>'+browseNav+classTabs+'</div></details></div>'+
+    '<details class="collection-browse-filters" open><summary>Назначение и класс'+(section?' · '+e(tier?.label || section.name):'')+'</summary><div>'+browseNav+classTabs+'</div></details></div>'+
     (rows.length?'<p class="count-label">Коллекций: '+catalogNumber.format(rows.length)+'</p>'+sections+pagination :
       '<p class="empty">'+(query?'Коллекции с таким названием не найдены. <a class="text-link" href="'+e(toOverview({cq:null,cp:null}))+'">Сбросить поиск</a>':'В этом разделе пока нет коллекций.')+'</p>'),levels);
 }
