@@ -83,6 +83,10 @@ function projectShowcase(excluded) {
   <div class="actions carousel-buttons"><button class="btn secondary" data-projects="-1" aria-label="Предыдущий проект">Назад</button><button class="btn secondary" data-projects="1" aria-label="Следующий проект">Далее</button></div></div>`;
 }
 
+function projectSection(title = 'Выполненные проекты') {
+  return `<section class="section"><div class="section-head"><h2>${e(title)}</h2><a class="text-link" href="#/projects">Все проекты</a></div>${projectShowcase()}</section>`;
+}
+
 function serviceFacts() {
   const rates = officeConfig.localRates;
   if (!rates) return '';
@@ -129,7 +133,7 @@ function home() {
         <p>Выберите столы, кресла и тумбы. Посмотрите цену каждой позиции и попробуйте расставить мебель по размерам комнаты.</p>
         <div class="actions"><a class="btn" href="#/project?section=kit">Собрать комплект</a><a class="btn secondary" href="#/planner">Открыть планировщик</a></div></div>
     </section>
-    <section class="section"><div class="section-head"><h2>Наши проекты</h2><a class="text-link" href="#/projects">Все проекты</a></div>${projectShowcase()}</section>
+    ${projectSection('Наши проекты')}
     <section class="section"><div class="section-head"><h2>Доставка и сборка</h2><a class="text-link" href="#/delivery">Сроки и условия</a></div>${serviceFacts()}</section>
     <section class="section home-company" aria-labelledby="home-company-title">
       <div class="home-company-copy"><p class="eyebrow">О компании</p><h2 id="home-company-title">Комплектуем офисы под ключ</h2>
@@ -1261,7 +1265,7 @@ function projectPage(target, option, example, qty, useKit, drawnPlan) {
       <p class="small">В смете подтвердим стоимость с услугами, наличие всей партии и дату завершения монтажа.</p>
       ${!hasBackend?'<p class="small">'+planHelp+'</p>':''}<p class="result" role="status" hidden></p></form></div>
       <section class="section"><div class="section-head"><h2>Этапы комплектации</h2></div><div class="steps">${informationCards(projectStages)}</div></section>
-      <section class="section"><div class="section-head"><h2>Выполненные проекты</h2><a class="text-link" href="#/projects">Все проекты</a></div><div class="actions"><a class="text-link" href="#/projects/sber">Клиентский зал Сбера</a></div></section>
+      ${projectSection()}
     </div>`;
 }
 
@@ -1432,8 +1436,8 @@ function aboutPage() {
       <div><h3>Склад в Перми</h3><p>На своём складе комплектуем заказы. Наличие партии и сроки поставки уточняем по выбранным моделям.</p></div>
       <div><h3>Собственный транспорт и сборка</h3><p>Привозим мебель, собираем и расставляем её по плану. После поставки помогаем с сервисом и доукомплектацией.</p></div></div></section>
     <section class="section"><div class="section-head"><h2>Как проходит заказ</h2></div><div class="steps">${informationCards(projectStages)}</div></section>
-    <section class="section service-details"><div><h2>Реквизиты</h2><dl class="contact-details"><div><dt>Организация</dt><dd>ООО «ГРАНД-ОФИС»</dd></div><div><dt>ИНН</dt><dd>5904377899</dd></div><div><dt>ОГРН</dt><dd>1195958033700</dd></div></dl><a class="text-link" href="https://grand-office59.ru/privacy-policy/">Политика конфиденциальности</a></div>
-    <aside class="panel"><h3>Клиенты и проекты</h3><p>Посмотрите фотографии реализованных проектов для Сбера, Россельхозбанка, ЛУКОЙЛа и Газпрома.</p><a class="text-link" href="#/projects">Смотреть портфолио</a></aside></section>`);
+    ${projectSection()}
+    <section class="section"><h2>Реквизиты</h2><dl class="contact-details"><div><dt>Организация</dt><dd>ООО «ГРАНД-ОФИС»</dd></div><div><dt>ИНН</dt><dd>5904377899</dd></div><div><dt>ОГРН</dt><dd>1195958033700</dd></div></dl><a class="text-link" href="https://grand-office59.ru/privacy-policy/">Политика конфиденциальности</a></section>`);
 }
 
 function projectsPage(id) {
