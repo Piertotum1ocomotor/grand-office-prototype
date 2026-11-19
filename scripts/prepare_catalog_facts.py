@@ -35,6 +35,24 @@ FURNITURE = re.compile(
     r'\b(?:стол(?:ы|ик(?:и)?)?|кресл[оа]|стул(?:ья)?|шкаф[ы]?|гардероб[ы]?|'
     r'тумб[аы]|стеллаж[и]?|диван[ы]?|кровать|сейф[ы]?)\b', re.I
 )
+CHAIR_MODELS = {
+    'Бюрократ': r'\bБюрократ\s+([A-Z]+-\d+[A-Z0-9-]*|Viking\s+\d+)',
+    'Chairman': r'\bChairman\s+((?:[A-Z]+-)?\d+[A-Z0-9-]*)',
+    'Riva': r'\bRiva(?:\s+Chair)?\s+([A-ZА-Я]?\d+[A-ZА-Я0-9-]*)',
+    'Norden': r'\bNorden\s+(Некст|Техно|Lotus\s+Evo|Бостон|Денвер|Hero|Лондон\s+офис|Трэнд)',
+}
+CHAIR_MODELS = {
+    brand: re.compile(pattern + r'(?![\w-])', re.I)
+    for brand, pattern in CHAIR_MODELS.items()
+}
+
+
+def chair_series_for(name):
+    for brand, pattern in CHAIR_MODELS.items():
+        match = pattern.search(name)
+        if match:
+            return brand, ' '.join(match[1].split()).upper()
+    return None
 
 
 def measured(axis, default_unit):
@@ -113,6 +131,7 @@ def main():
     dimensions, parts, finish_keys, colour_labels = {}, [], {}, {}
     section_finishes = defaultdict(set)
     category_types = defaultdict(set)
+    chair_models = defaultdict(lambda: defaultdict(list))
     affected_types = set()
     for row in catalog['items']:
         identifier, name = row[:2]
@@ -133,6 +152,9 @@ def main():
             dimensions[identifier] = parsed
         if kind != 'furniture':
             continue
+        if row[10] == 'chairs' and (series_key := chair_series_for(name)):
+            brand, model = series_key
+            chair_models[brand][model].append(identifier)
         scopes = set()
         for ident in row[6]:
             while ident in parents and ident not in scopes:
@@ -160,6 +182,10 @@ def main():
         'finishes': [colour_labels[key] for key in keys],
         'productFinishes': {identifier: sorted(index[key] for key in values) for identifier, values in finish_keys.items()},
         'collectionFinishes': {identifier: sorted(index[key] for key in values) for identifier, values in section_finishes.items()},
+        'chairSeries': {
+            brand: {model: sorted(ids) for model, ids in sorted(models.items()) if len(ids) > 1}
+            for brand, models in chair_models.items()
+        },
     }
     (ROOT / 'catalog-facts.json').write_text(json.dumps(encoded, ensure_ascii=False, separators=(',', ':')) + '\n')
     print(len(dimensions), 'dimension corrections;', len(parts), 'parts;', len(finish_keys), 'products with verified finishes')

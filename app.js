@@ -8,6 +8,8 @@ let catalogItems;
 let catalogFacts;
 let correctedParts;
 let finishVocabulary;
+let chairSeriesGroups = [];
+const chairSeriesByKey = new Map();
 let officeConfig = {};
 const seatPresets = [1,4,8];
 let hasBackend = false;
@@ -19,6 +21,7 @@ const pageSize = 24;
 const catalogPagesPerFile = 8;
 const smallCatalogBucket = 32;
 const positions = new Map();
+const chairBrandAliases = {Chairman:'Чаирман',Riva:'Рива',Norden:'Норден'};
 let previousRoute = currentRoute();
 let pendingCatalogScroll;
 if ('scrollRestoration' in history) history.scrollRestoration='manual';
@@ -28,6 +31,17 @@ async function loadCatalogFacts() {
   catalogFacts = await site.getCatalogFacts();
   correctedParts = new Set(catalogFacts.parts);
   finishVocabulary = new Map(catalogFacts.finishes.map(label=>[searchWords(label).join(' '),label]));
+  chairSeriesGroups = Object.entries(catalogFacts.chairSeries || {}).map(([brand,models])=>({
+    id:brand,
+    name:brand,
+    items:Object.entries(models).map(([model,ids])=>{
+      const name = brand+' '+model;
+      const alias = chairBrandAliases[brand];
+      const category = {name,slug:name,id:name,searchName:alias ? name+' / '+alias+' '+model : name};
+      chairSeriesByKey.set(name,{category,ids:new Set(ids)});
+      return {category};
+    })
+  }));
 }
 const catalogDimensions = (id, dimensions) => catalogFacts && Object.hasOwn(catalogFacts.dimensions,id) ?
   catalogFacts.dimensions[id] : dimensions;
@@ -234,7 +248,7 @@ const catalogRanges=[
 ];
 const rangeFields=catalogRanges.flatMap(({low,high})=>[low,high]);
 const dimensionFields=rangeFields.slice(2);
-const filterFields=[...rangeFields,'use','shape','k','series','finish','unknown'];
+const filterFields=[...rangeFields,'use','shape','k','series','chairSeries','finish','unknown'];
 
 function catalogBound(raw,range) {
   if (raw==null || !String(raw).trim()) return null;
@@ -303,11 +317,12 @@ function catalogSettings(args) {
     if (!settings.has('t')) settings.set('t',legacy);
     settings.delete('c');
   }
+  if (settings.get('t')!=='chairs' || settings.has('c') || settings.has('series')) settings.delete('chairSeries');
   if (!getCatalogRanges(settings).slice(1).some(hasBounds)) settings.delete('unknown');
   return settings;
 }
 
-const categoryPatch=(entry)=>({c:entry.slug || entry.id,t:null,use:null,shape:null,k:null,series:null,finish:null,view:null,p:null,cp:null,cq:null,pick:null});
+const categoryPatch=(entry)=>({c:entry.slug || entry.id,t:null,use:null,shape:null,k:null,series:null,chairSeries:null,finish:null,view:null,p:null,cp:null,cq:null,pick:null});
 function categoryItems(entries, selected, settings) {
   const path = new Set();
   for (let item=selected; item && !path.has(item.id); item=catById.get(item.parent)) path.add(item.id);
@@ -323,7 +338,7 @@ function categoryItems(entries, selected, settings) {
   }).join('');
 }
 
-function catalogResults(settings,{selected,type,part,query,series,seriesCategory,purpose,shape,ranges}) {
+function catalogResults(settings,{selected,type,part,query,series,seriesCategory,chairSeries,purpose,shape,ranges}) {
   const search = searchProducts(query);
   const [priceBounds,...sizeBounds]=ranges;
   const dimensions=sizeBounds.filter(hasBounds);
@@ -333,6 +348,7 @@ function catalogResults(settings,{selected,type,part,query,series,seriesCategory
   const known=[],missing=[];
   for (const entry of search.items) {
     if (!matchesCategory(entry,selected) || (type && entry.type!==type)) continue;
+    if (chairSeries && !chairSeries.ids.has(entry.id)) continue;
     if (part && entry.kind!==part) continue;
     if (purpose && !matchesPurpose(entry,purpose)) continue;
     if (shape && !matchesTableShape(entry,shape)) continue;
@@ -415,7 +431,7 @@ const collectionSearchKey = value => normalize(value).replace(/[авсенкмо
   'abcehkmoptxy'[lookalikeLetters.indexOf(char)]).replace(/[^\p{L}\p{N}]+/gu,' ').trim();
 const collectionPrefix = /^(?:офисная мебель|мебель для персонала|кабинеты? руководителя|мебель для гостиниц(?: и отелей)?|офисные перегородки|столы для переговоров|стойк[аи] ресепше?н)\s+/i;
 function collectionNameRank(category, query) {
-  const name = category.name.replace(collectionPrefix,'');
+  const name = (category.searchName || category.name).replace(collectionPrefix,'');
   const aliases = name.split(/[\/|]/).map(collectionSearchKey).filter(Boolean);
   const wordCount = value => value.split(' ').length;
   if (aliases.includes(query) && aliases.every(alias=>wordCount(alias)<=wordCount(query))) return 3;
@@ -553,13 +569,21 @@ function collectionChoices(type, selected) {
   })).filter(section=>section.items.length);
 }
 
-function collectionFilter(type, selected, series, chosen) {
+function collectionFilter(type, selected, series, chosen, chairSeries) {
+  if (type==='chairs' && !selected && !series && chairSeriesGroups.length) {
+    const value = chairSeries?.category.slug || '';
+    return collectionPickerField('chairSeries','Серия кресел',value,value || 'Выбрать серию');
+  }
   const groups=collectionChoices(type,collectionCategory(selected)?null:selected);
   if (!groups.length && !series) return '';
-  return '<div class="collection-filter"><span class="field-label" id="catalog-series-label">Коллекция</span>'+
-    '<input type="hidden" id="catalog-series" name="series" value="'+e(series)+'">'+
+  return collectionPickerField('series','Коллекция',series,chosen?.name.replace(collectionPrefix,'') || series || 'Выбрать коллекцию');
+}
+
+function collectionPickerField(name,label,value,caption) {
+  return '<div class="collection-filter"><span class="field-label" id="catalog-series-label">'+e(label)+'</span>'+
+    '<input type="hidden" id="catalog-series" name="'+e(name)+'" value="'+e(value)+'">'+
     '<button class="field collection-picker-trigger" type="button" data-choose-collection aria-haspopup="dialog" aria-controls="collection-picker" aria-labelledby="catalog-series-label catalog-series-value">'+
-    '<span id="catalog-series-value">'+e(chosen?.name.replace(collectionPrefix,'') || series || 'Выбрать коллекцию')+'</span>'+
+    '<span id="catalog-series-value">'+e(caption)+'</span>'+
     '<i class="chevron" aria-hidden="true"></i></button></div>';
 }
 
@@ -569,7 +593,7 @@ document.body.insertAdjacentHTML('beforeend','<dialog id="collection-picker" cla
   '<input class="field" type="search" id="collection-picker-query" placeholder="Название, например Xten или Икстен" maxlength="100" autocomplete="off" aria-controls="collection-picker-options">'+
   '<p class="small" id="collection-picker-count" role="status"></p></div>'+
   '<form id="collection-picker-form"><div class="collection-picker-options" id="collection-picker-options"></div>'+
-  '<div class="collection-picker-footer"><button type="submit" class="btn">Применить</button><a class="text-link" id="collection-picker-photos" href="#/catalog?view=collections">Посмотреть коллекции с фото</a></div></form></dialog>');
+  '<div class="collection-picker-footer"><button type="submit" class="btn">Применить</button></div></form></dialog>');
 const collectionPicker=document.querySelector('#collection-picker');
 const pickerQuery=document.querySelector('#collection-picker-query');
 let pickerState;
@@ -581,18 +605,19 @@ function renderCollectionChoices() {
       .sort((a,b)=>query ? collectionNameRank(b.category,query)-collectionNameRank(a.category,query) : 0)
   })).filter(section=>section.items.length);
   const count=matched.reduce((sum,section)=>sum+section.items.length,0);
-  document.querySelector('#collection-picker-count').textContent=(query?'Найдено коллекций: ':'Доступно коллекций: ')+count;
+  const noun = pickerState.chairs ? 'серий' : 'коллекций';
+  document.querySelector('#collection-picker-count').textContent=(query?'Найдено ':'Доступно ')+noun+': '+count;
   const option=(category,caption)=>'<label class="collection-picker-option"><input type="radio" name="collection" value="'+e(category?.slug || '')+'" '+
-    (pickerState.value===(category?.slug || '')?'checked':'')+'><span><strong>'+e(category?.name.replace(collectionPrefix,'') || 'Все коллекции')+'</strong>'+
+    (pickerState.value===(category?.slug || '')?'checked':'')+'><span><strong>'+e(category?.name.replace(collectionPrefix,'') || (pickerState.chairs?'Все серии':'Все коллекции'))+'</strong>'+
     (caption?'<small>'+e(caption)+'</small>':'')+'</span></label>';
-  const selected=selectedSeries(pickerState.value);
+  const selected=pickerState.chairs ? chairSeriesByKey.get(pickerState.value)?.category : selectedSeries(pickerState.value);
   const selectedOutside=selected && !pickerState.groups.some(section=>section.items.some(item=>item.category.id===selected.id));
   document.querySelector('#collection-picker-options').innerHTML=
-    (!query?option(null,'Снять фильтр по коллекции')+(selectedOutside?option(selected,'Текущий выбор'):''):'')+
+    (!query?option(null,pickerState.chairs?'Снять фильтр по серии':'Снять фильтр по коллекции')+(selectedOutside?option(selected,'Текущий выбор'):''):'')+
     matched.map(section=>'<details class="collection-picker-group" data-picker-section="'+section.id+'" '+
-      (query || pickerState.open.has(section.id)?'open':'')+'><summary><span>'+e(section.name)+'</span><span class="small">'+section.items.length+'</span><i class="chevron" aria-hidden="true"></i></summary>'+
+      (query || pickerState.open.has(String(section.id))?'open':'')+'><summary><span>'+e(section.name)+'</span><span class="small">'+section.items.length+'</span><i class="chevron" aria-hidden="true"></i></summary>'+
       '<div>'+section.items.map(item=>option(item.category,[section.name,item.group].filter(Boolean).join(' · '))).join('')+'</div></details>').join('')+
-    (!count?'<div class="collection-picker-empty"><p>Коллекции с таким названием не найдены.</p><button type="button" class="text-link" data-picker-reset>Показать полный список</button></div>':'');
+    (!count?'<div class="collection-picker-empty"><p>'+(pickerState.chairs?'Серии':'Коллекции')+' с таким названием не найдены.</p><button type="button" class="text-link" data-picker-reset>Показать полный список</button></div>':'');
 }
 
 function openCollectionPicker(button) {
@@ -601,14 +626,18 @@ function openCollectionPicker(button) {
   const source=catalogOrigin(settings.get('back'));
   const sourceCategory=source && selectedCategory(getRoute(source).args.get('c'));
   const scope=collectionCategory(category)?(collectionScope(sourceCategory)?sourceCategory:null):category;
-  const groups=collectionChoices(settings.get('t'),scope);
-  const value=document.querySelector('#catalog-series').value;
-  pickerState={groups,value,button,open:new Set(groups.filter(section=>
-    section.items.some(item=>item.category.slug===value) || groups.length===1).map(section=>section.id))};
+  const field = document.querySelector('#catalog-series');
+  const chairs = field.name==='chairSeries';
+  const groups = chairs ? chairSeriesGroups : collectionChoices(settings.get('t'),scope);
+  const value = field.value;
+  pickerState={groups,value,button,chairs,open:new Set(groups.filter(section=>
+    section.items.some(item=>item.category.slug===value) || groups.length===1).map(section=>String(section.id)))};
   pickerQuery.value='';
-  document.querySelector('#collection-picker-photos').href=catalogLink('',{c:scope?.slug,view:'collections'});
-  document.querySelector('#collection-picker-photos').textContent=scope?'Все коллекции раздела с фото':'Все коллекции с фото';
-  prepareLinks(collectionPicker);
+  const title = chairs ? 'Выбрать серию кресел' : 'Выбрать коллекцию';
+  document.querySelector('#collection-picker-title').textContent=title;
+  collectionPicker.querySelector('.collection-picker-close').setAttribute('aria-label',chairs?'Закрыть выбор серии':'Закрыть выбор коллекции');
+  pickerQuery.labels[0].textContent=chairs?'Найти серию кресел':'Найти коллекцию';
+  pickerQuery.placeholder=chairs?'Бренд или модель, например CH-330M':'Название, например Xten или Икстен';
   renderCollectionChoices();
   const rect=button.getBoundingClientRect();
   const width=Math.min(540,window.innerWidth-32);
@@ -629,8 +658,8 @@ collectionPicker.addEventListener('keydown',event=>{
 collectionPicker.addEventListener('toggle',event=>{
   const group=event.target;
   if (!group.dataset.pickerSection || pickerQuery.value.trim()) return;
-  if (group.open) pickerState.open.add(Number(group.dataset.pickerSection));
-  else pickerState.open.delete(Number(group.dataset.pickerSection));
+  if (group.open) pickerState.open.add(group.dataset.pickerSection);
+  else pickerState.open.delete(group.dataset.pickerSection);
 },true);
 collectionPicker.addEventListener('change',event=>{
   if (event.target.name==='collection') pickerState.value=event.target.value;
@@ -641,11 +670,6 @@ collectionPicker.addEventListener('click',event=>{
     pickerQuery.value='';
     renderCollectionChoices();
     pickerQuery.focus();
-  }
-  const photos=event.target.closest('#collection-picker-photos');
-  if (photos) {
-    captureCatalogScroll(photos.dataset.route || photos.getAttribute('href'),'.catalog-navigation');
-    collectionPicker.close();
   }
   if (event.target===collectionPicker) {
     const rect=collectionPicker.getBoundingClientRect();
@@ -661,7 +685,8 @@ document.querySelector('#collection-picker-form').addEventListener('submit',even
   const field=document.querySelector('#catalog-series');
   field.value=pickerState.value;
   const chosen=selectedSeries(pickerState.value);
-  document.querySelector('#catalog-series-value').textContent=chosen?.name.replace(collectionPrefix,'') || pickerState.value || 'Выбрать коллекцию';
+  document.querySelector('#catalog-series-value').textContent=chosen?.name.replace(collectionPrefix,'') || pickerState.value ||
+    (pickerState.chairs?'Выбрать серию':'Выбрать коллекцию');
   collectionPicker.close();
   const fromContext=Boolean(pickerState.button.closest('.collection-context-links'));
   field.form.dataset.collectionAnchor=fromContext?'context':'filters';
@@ -698,7 +723,8 @@ function catalogPage(settings, preview, unavailable) {
   if (showCollections(settings,selected)) return collectionOverview(settings,selected);
   const seriesCategory = selectedSeries(series);
   const collection = seriesCategory || collectionCategory(selected);
-  const resultOptions = {selected,type,part,query,series,seriesCategory,purpose,shape,ranges};
+  const chairSeries = chairSeriesByKey.get(settings.get('chairSeries'));
+  const resultOptions = {selected,type,part,query,series,seriesCategory,chairSeries,purpose,shape,ranges};
   const matches = preview ? preview.rows.map(fromBrowse) : catalogResults(settings,resultOptions);
   const count = preview?.count ?? matches.length;
   const totalPages = Math.max(1,Math.ceil(count/pageSize));
@@ -720,7 +746,8 @@ function catalogPage(settings, preview, unavailable) {
       return [[range.low,range.min!=null && kind+(kind?'от ':'От ')+amount(range.min)],
         [range.high,range.max!=null && kind+(kind?'до ':'До ')+amount(range.max)]];
     }),
-    ['series',!collection&&series&&'Коллекция «'+series+'»'],['finish',!collection&&finish&&'Отделка «'+finish+'»'],
+    ['series',!collection&&series&&'Коллекция «'+series+'»'],['chairSeries',chairSeries&&'Серия «'+chairSeries.category.name+'»'],
+    ['finish',!collection&&finish&&'Отделка «'+finish+'»'],
     ['unknown',dimensions.length&&includeUnknown&&'Без части габаритов'],
     ['sort',sort==='up'?'Сначала дешевле':sort==='down'?'Сначала дороже':'']
   ].filter(([,label])=>label);
@@ -731,7 +758,7 @@ function catalogPage(settings, preview, unavailable) {
   const forTables=type==='tables' || (!type && (tableSection || shape || Object.hasOwn(tablePurposes,purpose)));
   const forChairs=type==='chairs' || (!type && (chairSection || Object.hasOwn(chairPurposes,purpose)));
   const purposeOptions=forTables?tablePurposes:forChairs?chairPurposes:null;
-  const filters=collectionFilter(type,selected,series || collection?.slug || '',collection)+catalogRangeFields(priceBounds)+
+  const filters=collectionFilter(type,selected,series || collection?.slug || '',collection,chairSeries)+catalogRangeFields(priceBounds)+
     '<details class="filter-section" '+(dimensions.length || desktop?'open':'')+'><summary>Габариты</summary><div class="filter-section-body">'+
     dimensionBounds.map(catalogRangeFields).join('')+'<label class="unknown-width"><input type="checkbox" name="unknown" value="1" '+
     (includeUnknown?'checked':'')+' '+(dimensions.length?'':'disabled')+'> Включить товары без всех указанных габаритов</label></div></details>'+
@@ -800,13 +827,14 @@ function catalogPage(settings, preview, unavailable) {
   const effectiveType=type || (childTypes.length===1 && !childCategory.partsOnly ? childTypes[0] : '');
   const tabRanges = collection || seriesCategory ? ranges.slice(0,1) : ranges;
   const constrainedTypes = catalogItems && (finish || series || query || tabRanges.some(hasBounds))
-    ? new Set(catalogResults(settings,{...resultOptions,selected:typeScope,type:'',part:'furniture',purpose:'',shape:'',
+    ? new Set(catalogResults(settings,{...resultOptions,chairSeries:null,selected:typeScope,type:'',part:'furniture',purpose:'',shape:'',
       ranges:tabRanges}).map(item=>item.type))
     : null;
   const availableTypes = typeOrder.filter(key=>scoped.includes(key) &&
     (!constrainedTypes || key===effectiveType || constrainedTypes.has(key)));
   const typeTabs = availableTypes.length ? '<nav class="quick-categories" aria-label="Тип мебели">'+['',...availableTypes].map(key=>'<a class="chip" data-catalog-type href="'+
     e(toCatalog({...(collection && !seriesCategory?{c:collection.slug}:{}),t:key,use:null,shape:null,k:null,p:null,
+      ...(key!=='chairs'?{chairSeries:null}:{}),
       ...(key!==type && (collection || seriesCategory)?{...Object.fromEntries(dimensionFields.map(field=>[field,null])),unknown:null}:{}),
       view:selected ? settings.get('view') : 'products'}))+'" '+
     (effectiveType===key && (key || !childCategory)?'aria-current="page"':'')+'>'+

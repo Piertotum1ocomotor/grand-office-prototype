@@ -639,7 +639,6 @@ dialog.collection-picker{position:fixed;margin:0;width:min(540px,calc(100vw - 32
 .collection-picker-group>summary>span:first-child{flex:1;min-width:0}
 .collection-picker-group[open]>summary .chevron{transform:rotate(225deg)}
 .collection-picker-footer{display:grid;gap:12px;padding:14px 20px;border-top:1px solid var(--line);background:var(--paper)}
-.collection-picker-footer .text-link{justify-self:center;font-size:14px}
 .collection-picker-empty{display:grid;gap:12px;padding:20px 10px}
 .collection-picker-empty button{justify-self:start;padding:0;background:transparent}
 @media(max-width:620px){
