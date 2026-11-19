@@ -400,11 +400,14 @@ function showDepartmentIndex(settings) {
 }
 
 function catalogDepartmentsPage() {
-  const choices=[['Коллекции',collectionNavigation(),'Найти мебель своей серии'],
-    ...Object.entries(productTypes).map(([key,[name]])=>[name,catalogLink('',{t:key}),''])];
-  return page('Каталог','<nav class="catalog-entry-grid" aria-label="Каталог мебели">'+
-    choices.map(([label,href,caption],index)=>'<a class="catalog-browse-card catalog-entry-card'+(index===0?' catalog-entry-collections':'')+'" href="'+e(href)+'"><div><h2>'+e(label)+'</h2>'+
-      (caption?'<p class="small">'+e(caption)+'</p>':'')+'</div></a>').join('')+'</nav>');
+  const collections = '<a class="catalog-browse-card catalog-entry-card catalog-entry-collections" href="'+e(collectionNavigation())+'">'+
+    '<div class="catalog-entry-label"><h2>Коллекции</h2><p class="small">Найти мебель своей серии</p></div>'+
+    photo('./assets/riva-interior.webp','','width="900" height="720"')+'</a>';
+  const types = Object.entries(productTypes).map(([type,[name]])=>
+    '<a class="catalog-browse-card catalog-entry-card" href="'+e(catalogLink('',{t:type}))+'">'+
+    '<div class="catalog-entry-image">'+photo('./assets/catalog/'+type+'.webp','','width="420" height="210" decoding="async"')+'</div>'+
+    '<div class="catalog-entry-label"><h2>'+e(name)+'</h2></div></a>').join('');
+  return page('Каталог','<nav class="catalog-entry-grid" aria-label="Каталог мебели">'+collections+types+'</nav>');
 }
 
 const lookalikeLetters = [...'авсенкмортху'];

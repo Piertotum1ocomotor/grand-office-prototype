@@ -837,10 +837,13 @@ dialog.plan-library-dialog{position:fixed;padding:0;width:min(540px,calc(100vw -
 
 /* Catalog destinations are separate from product filters. */
 .catalog-entry-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:25px}
-.catalog-entry-card{justify-content:center;min-height:105px}
-.catalog-entry-card>div{padding:22px 24px}
-.catalog-entry-card h2{font-size:clamp(24px,2.8vw,35px)}
-.catalog-entry-collections{grid-column:1/-1;background:#f3e8e2;border-color:#c5a397;color:var(--brand-dark)}
+.catalog-entry-card>.catalog-entry-image{padding:0;background:#f5f2ef}
+.catalog-entry-image img{aspect-ratio:2.25;object-fit:contain;background:none;mix-blend-mode:multiply}
+.catalog-entry-card>.catalog-entry-label{padding:14px 20px}
+.catalog-entry-card h2{font-size:clamp(23px,2.6vw,32px);line-height:1.12}
+.catalog-entry-collections{grid-column:1/-1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,48%);align-items:center;background:#f3e8e2;border-color:#c5a397;color:var(--brand-dark)}
+.catalog-entry-collections>.catalog-entry-label{padding:20px 24px}
+.catalog-entry-collections>img{height:clamp(132px,14vw,190px);aspect-ratio:auto;object-position:center 59%}
 .catalog-entry-collections .small{margin-top:7px;color:var(--muted)}
 .collection-browse-filters>summary{cursor:pointer;color:var(--brand-dark);font-size:14px;padding-block:5px}
 .collection-browse-filters>div{display:grid;gap:12px;padding-top:10px}
@@ -851,8 +854,9 @@ dialog.plan-library-dialog{position:fixed;padding:0;width:min(540px,calc(100vw -
 .mobile-catalog-departments a{padding:10px 4px;font-size:14px;min-height:44px}
 @media(max-width:620px){
  .catalog-entry-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:20px}
- .catalog-entry-card{min-height:88px}
- .catalog-entry-card>div{padding:17px 18px}
- .catalog-entry-card h2{font-size:25px}
+ .catalog-entry-card>.catalog-entry-label{padding:12px 13px}
+ .catalog-entry-card h2{font-size:clamp(20px,5.8vw,25px)}
+ .catalog-entry-collections{grid-template-columns:minmax(0,1fr) minmax(0,40%)}
+ .catalog-entry-collections>img{height:100%;min-height:106px}
  .collection-tools #collection-search{width:100%}
 }
