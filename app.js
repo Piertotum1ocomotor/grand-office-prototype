@@ -20,7 +20,8 @@ const catalogPagesPerFile = 8;
 const smallCatalogBucket = 32;
 const positions = new Map();
 let previousRoute = currentRoute();
-let pendingTypeSwitch;
+let pendingCatalogScroll;
+if ('scrollRestoration' in history) history.scrollRestoration='manual';
 
 async function loadCatalogFacts() {
   if (catalogFacts) return;
@@ -656,7 +657,11 @@ collectionPicker.addEventListener('click',event=>{
     renderCollectionChoices();
     pickerQuery.focus();
   }
-  if (event.target.closest('#collection-picker-photos')) collectionPicker.close();
+  const photos=event.target.closest('#collection-picker-photos');
+  if (photos) {
+    captureCatalogScroll(photos.dataset.route || photos.getAttribute('href'),'.catalog-navigation');
+    collectionPicker.close();
+  }
   if (event.target===collectionPicker) {
     const rect=collectionPicker.getBoundingClientRect();
     if (event.clientX<rect.left || event.clientX>rect.right || event.clientY<rect.top || event.clientY>rect.bottom) collectionPicker.close();
@@ -1359,6 +1364,43 @@ function navigate(address) {
   onRouteChange();
 }
 
+function captureCatalogScroll(address, selector, focusSelector) {
+  if (address===currentRoute() || getRoute().key!=='catalog' || getRoute(address).key!=='catalog') return;
+  const anchor=main.querySelector(selector) || main.querySelector('h1');
+  if (!anchor) return;
+  const fields=main.querySelector('.catalog-filter-fields');
+  pendingCatalogScroll={
+    route:address,selector:anchor.matches(selector)?selector:'h1',top:anchor.getBoundingClientRect().top,
+    scrollLeft:anchor.scrollLeft,focusSelector,
+    filtersOpen:main.querySelector('.catalog-filters')?.open,
+    filterSections:[...main.querySelectorAll('.filter-section')].map(section=>section.open),
+    filterScroll:fields?.scrollTop || 0,
+    directoryOpen:main.querySelector('.catalog-directory')?.open,
+    directoryScroll:main.querySelector('.catalog-directory nav')?.scrollTop || 0
+  };
+}
+
+function restoreCatalogScroll(state) {
+  const filters=main.querySelector('.catalog-filters');
+  if (filters && state.filtersOpen!==undefined) filters.open=state.filtersOpen;
+  main.querySelectorAll('.filter-section').forEach((section,index)=>{
+    if (state.filterSections[index]!==undefined) section.open=state.filterSections[index];
+  });
+  const fields=main.querySelector('.catalog-filter-fields');
+  if (fields) fields.scrollTop=state.filterScroll;
+  const directory=main.querySelector('.catalog-directory');
+  if (directory && state.directoryOpen!==undefined) {
+    directory.open=state.directoryOpen;
+    directory.querySelector('nav').scrollTop=state.directoryScroll;
+  }
+  const anchor=main.querySelector(state.selector) || main.querySelector('h1');
+  const focus=state.focusSelector && main.querySelector(state.focusSelector);
+  (focus || main).focus({preventScroll:true});
+  if (!anchor) return;
+  anchor.scrollLeft=state.scrollLeft;
+  window.scrollTo(0,window.scrollY+anchor.getBoundingClientRect().top-state.top);
+}
+
 function replaceRoute(address) {
   const position = positions.get(previousRoute);
   history.replaceState(pathRouting ? {...history.state,grandRoute:address} : history.state,'',
@@ -1459,7 +1501,7 @@ function productChoiceFor(id, args, options) {
   return site.session('selected-'+id,null);
 }
 
-async function render(move = false, typeSwitch) {
+async function render(move = false, catalogScroll) {
   const current = ++revision;
   const {key,id,args} = getRoute();
   const product = Number(id);
@@ -1528,11 +1570,11 @@ async function render(move = false, typeSwitch) {
     form?.focus({preventScroll:true});
     form?.scrollIntoView({block:'start'});
   } else if (move) {
-    const typeNav = typeSwitch && main.querySelector('.catalog-type-tabs nav');
-    const focus = typeSwitch?.keyboard && typeNav?.querySelector('[aria-current="page"]');
-    (focus || main).focus({preventScroll:true});
-    if (typeNav) window.scrollTo(0,window.scrollY+typeNav.getBoundingClientRect().top-typeSwitch.top);
-    else window.scrollTo(0,positions.get(currentRoute()) || 0);
+    if (catalogScroll) restoreCatalogScroll(catalogScroll);
+    else {
+      main.focus({preventScroll:true});
+      window.scrollTo(0,positions.get(currentRoute()) || 0);
+    }
   }
   prepareLinks(main);
   if (pathRouting) {
@@ -1590,9 +1632,6 @@ main.addEventListener('scroll',event=>{
 },true);
 main.addEventListener('toggle',event=>{
   const branch=event.target;
-  if (branch.open && branch.classList.contains('catalog-filters') && matchMedia('(max-width: 960px)').matches) {
-    branch.scrollIntoView({block:'nearest'});
-  }
   if (!branch.open || !branch.dataset.category) return;
   const body=branch.querySelector('div');
   if (body.children.length>1) return;
@@ -1609,10 +1648,21 @@ main.addEventListener('click', async (event)=>{
     openCollectionPicker(collectionButton);
     return;
   }
-  const tab=event.target.closest('[data-catalog-type]');
-  if (tab && event.button===0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
-    const route=tab.dataset.route || tab.getAttribute('href');
-    if (route!==currentRoute()) pendingTypeSwitch={route,top:tab.closest('nav').getBoundingClientRect().top,keyboard:event.detail===0};
+  const catalogLinkElement=event.target.closest('a');
+  if (catalogLinkElement && event.button===0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+    const areas=[
+      '.catalog-mode-nav','.catalog-collection-segments','.collection-classes','.catalog-type-tabs nav',
+      '.applied-filters','.reset-filters','.catalog-results .empty','.collection-tools + .empty',
+      '.catalog-subsections','.catalog-directory'
+    ];
+    const area=areas.find(selector=>catalogLinkElement.closest(selector));
+    if (area) {
+      const selector=['.applied-filters','.catalog-results .empty'].includes(area)?'.catalog-heading':
+        area==='.reset-filters'?'.catalog-filters':
+        area==='.collection-tools + .empty'?'#collection-search':area;
+      const focus=event.detail===0?selector+' a[aria-current="page"]':null;
+      captureCatalogScroll(catalogLinkElement.dataset.route || catalogLinkElement.getAttribute('href'),selector,focus);
+    }
   }
   const control=event.target.closest('button');
   if (!control) return;
@@ -1701,7 +1751,9 @@ main.addEventListener('change',event=>{
   const element=event.target;
   if (element.id==='catalog-sort' || element.id==='catalog-finish') {
     const key = element.id==='catalog-sort' ? 'sort' : 'finish';
-    navigate(catalogLink(catalogSettings(getRoute().args),{[key]:element.value,p:null}));
+    const address=catalogLink(catalogSettings(getRoute().args),{[key]:element.value,p:null});
+    captureCatalogScroll(address,key==='sort'?'.catalog-heading':'.catalog-type-tabs','#'+element.id);
+    navigate(address);
   }
   if (element.id==='set-count') {
     const form = document.querySelector('#request-form');
@@ -1797,7 +1849,9 @@ main.addEventListener('submit',async(event)=>{
   if (form.id==='collection-search') {
     const query = form.elements.cq.value.trim();
     const search = collectionSearch(query);
-    navigate(catalogLink(catalogSettings(getRoute().args),{cq:search.phrase,cp:null,pick:search.intent?query:null}));
+    const address=catalogLink(catalogSettings(getRoute().args),{cq:search.phrase,cp:null,pick:search.intent?query:null});
+    captureCatalogScroll(address,'#collection-search','#collection-query');
+    navigate(address);
     return;
   }
   if (form.id==='filters') {
@@ -1819,7 +1873,9 @@ main.addEventListener('submit',async(event)=>{
       const finishes=(catalogFacts.collectionFinishes[chosen?.id] || []).map(index=>catalogFacts.finishes[index]);
       if (!finishes.includes(settings.get('finish'))) patch.finish=null;
     }
-    navigate(catalogLink(settings,patch));
+    const address=catalogLink(settings,patch);
+    captureCatalogScroll(address,'.catalog-filters','#filters button[type="submit"]');
+    navigate(address);
     return;
   }
   if (form.id==='catalog-jump') {
@@ -2019,10 +2075,10 @@ function onRouteChange() {
   positions.set(previousRoute,window.scrollY);
   previousRoute=address;
   if (collectionPicker.open) collectionPicker.close();
-  const typeSwitch=pendingTypeSwitch?.route===address ? pendingTypeSwitch : null;
-  pendingTypeSwitch=null;
+  const catalogScroll=pendingCatalogScroll?.route===address ? pendingCatalogScroll : null;
+  pendingCatalogScroll=null;
   hideSearchSuggestions();
-  render(true,typeSwitch);
+  render(true,catalogScroll);
 }
 window.addEventListener('hashchange',onRouteChange);
 if (pathRouting) {
