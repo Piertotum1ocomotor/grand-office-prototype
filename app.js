@@ -959,13 +959,12 @@ function itemPage(item, detail, variant, origin, choice) {
       ${finishLink?'<p class="product-finish-link"><a class="text-link" href="'+e(finishLink)+'">Мебель этой коллекции в такой же отделке</a></p>':''}
       <div class="logistics"><p class="stock">${liveStock>0 ? 'Доступно: '+liveStock+' шт.' : ((variant?.backorder ?? item.backorder)?'Под заказ':'Наличие уточняется')}</p><p class="small">${e(logistics(item))}</p></div>
       <p class="small"><a class="text-link" href="#/delivery?${context}">Рассчитать доставку этого товара</a></p>
-      ${warranty?'<p class="small">Гарантия · '+e(warranty)+'</p>':''}
-      ${item.url && !officeConfig.sameStoreDomain?'<p class="small source-link"><a class="text-link" href="'+e(item.url)+'">Карточка в действующем магазине</a></p>':''}</section></div>
+      ${warranty?'<p class="small">Гарантия · '+e(warranty)+'</p>':''}</section></div>
       ${description?'<section class="spec product-description"><h2>О товаре</h2><div class="product-prose">'+descriptionParagraphs(description)+'</div></section>':''}
       ${dimensions || needsDimensionCheck(item)? '<section class="spec"><h2>Габариты</h2>'+
         (dimensions?'<p>'+e(dimensions)+'</p>':'')+(needsDimensionCheck(item)?
           (dimensions?'<p>Часть размеров требует уточнения.</p>':'<p>Размеры требуют уточнения.</p>'):'')+'</section>' : ''}
-      ${specs.length?'<section class="spec"><h2>Характеристики</h2><dl>'+specs.map(([a,b])=>'<div><dt>'+e(a)+'</dt><dd>'+e(b)+'</dd></div>').join('')+'</dl>'+(detail?.[7]?'<p><a class="text-link" href="'+e(detail[7])+'">Спецификация модели у поставщика</a></p>':'')+'</section>':''}
+      ${specs.length?'<section class="spec"><h2>Характеристики</h2><dl>'+specs.map(([a,b])=>'<div><dt>'+e(a)+'</dt><dd>'+e(b)+'</dd></div>').join('')+'</dl>'+(detail?.[7]?'<p><a class="text-link" href="'+e(detail[7])+'">Спецификация модели</a></p>':'')+'</section>':''}
       </div>`;
 }
 
