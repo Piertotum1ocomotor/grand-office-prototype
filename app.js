@@ -95,10 +95,13 @@ function serviceFacts() {
     <div><dt>Стандартная сборка</dt><dd>${rates.assemblyPercent}%</dd><dd class="fact-description">От стоимости мебели. Дату согласуем.</dd></div></dl>`;
 }
 
+const officeQuote = '#/project?section=form';
+const officeBrief = 'Укажите размеры помещения, число рабочих мест и желаемую дату готовности.';
+
 const companyBenefits = [
   ['Более 15 лет','опыта команды'],
   ['Более 500','выполненных проектов'],
-  ['Склад в Перми','комплектуем заказы на своём складе'],
+  ['Наличие у поставщиков','проверяем остатки на нужную партию'],
   ['До двух лет','гарантии в зависимости от модели']
 ];
 const companyFigures = [
@@ -120,10 +123,10 @@ const informationCards = rows => rows.map(([title,copy])=>'<div><h3>'+e(title)+'
 function home() {
   return `<div class="shell">
     <section class="hero" aria-labelledby="home-title">
-      <div class="hero-copy"><p class="eyebrow">Пермь и Пермский край</p><h1 id="home-title">Офисная мебель и комплектация офисов</h1>
-      <p>Мебель для рабочих мест, переговорных и кабинетов. Подберём, доставим и соберём.</p>
-      <div class="actions"><a class="btn" href="#/catalog">Выбрать мебель</a><a class="btn secondary" href="#/project">Рассчитать комплектацию</a></div></div>
-      <div class="hero-photo">${photo('./assets/office.webp','Офис с деревянными столами и терракотовыми креслами','fetchpriority="high"')}</div>
+      <div class="hero-copy"><p class="eyebrow">Офисная мебель в Перми</p><h1 id="home-title">Проектируем логику пространства</h1>
+      <p>Спланируем офис, подберём мебель, подготовим смету, доставим и соберём.</p>
+      <div class="actions"><a class="btn" href="${officeQuote}">Запросить расчёт офиса</a><a class="btn secondary" href="#/catalog">Перейти в каталог</a></div></div>
+      <div class="hero-photo brand-photo">${photo('./assets/office.webp','Офис с деревянными столами и терракотовыми креслами','fetchpriority="high"')}</div>
     </section>
     <section class="section"><div class="section-head"><h2>Мебель для офиса</h2><a class="text-link" href="#/catalog">Весь каталог</a></div>
       <div class="actions home-types"><a class="chip home-collections-chip" href="#/catalog?view=collections">Все коллекции</a><a class="chip" href="#/catalog?t=tables">Столы</a><a class="chip" href="#/catalog?t=chairs">Кресла и стулья</a><a class="chip" href="#/catalog?t=cabinets">Шкафы</a><a class="chip" href="#/catalog?t=pedestals">Тумбы</a><a class="chip" href="#/catalog?t=shelving">Стеллажи</a></div>
@@ -137,7 +140,7 @@ function home() {
     <section class="section"><div class="section-head"><h2>Доставка и сборка</h2><a class="text-link" href="#/delivery">Сроки и условия</a></div>${serviceFacts()}</section>
     <section class="section home-company" aria-labelledby="home-company-title">
       <div class="home-company-copy"><p class="eyebrow">О компании</p><h2 id="home-company-title">Комплектуем офисы под ключ</h2>
-        <p class="home-company-intro">«Гранд-Офис» работает с 2019 года. Замеряем помещение, подбираем мебель, доставляем и собираем её по плану.</p>
+        <p class="home-company-intro">«Гранд-Офис» работает с 2019 года. Готовим план расстановки и смету, подбираем мебель по бюджету, доставляем и собираем её по плану.</p>
         <dl class="home-company-facts">${companyBenefits.map(([value,label])=>'<div><dt>'+e(value)+'</dt><dd>'+e(label)+'</dd></div>').join('')}</dl>
         <a class="text-link" href="#/about">Подробнее о компании</a></div>
       <figure class="home-company-photo">${photo('./assets/company.webp','Офис «Гранд-Офис» на Екатерининской, 10','loading="lazy" width="1158" height="850"')}</figure>
@@ -1021,9 +1024,10 @@ function contactFields() {
 
 function requestDraftKey(form) {
   if (form.dataset.draftKey) return form.dataset.draftKey;
+  const section = form.dataset.kind==='project' ? getRoute().args.get('section') : null;
   form.dataset.draftKey='grand-request-'+[form.dataset.kind,form.dataset.topic || '',form.dataset.product || '',
     form.dataset.variant || '',form.dataset.case || '',form.dataset.drawnPlan || '',
-    form.dataset.kind==='project'?getRoute().args.get('section') || '':''].join('|');
+    section==='form' ? '' : section || ''].join('|');
   return form.dataset.draftKey;
 }
 
@@ -1242,7 +1246,7 @@ function updateKitChoice(element) {
 function projectPage(target, option, example, qty, useKit, drawnPlan) {
   const planHelp = hasBackend ? 'Приложите план или ТЗ к запросу.' : 'Приложите план или ТЗ к письму перед отправкой.';
   const choices = seatPresets.includes(qty) ? seatPresets : [...seatPresets,qty];
-  return `<div class="shell page">${crumbs([['Комплектация офисов']])}<section class="project-hero"><div class="copy"><h1>Комплектация офисов</h1><p class="intro">Подберём мебель, подготовим планировку и смету, организуем доставку и монтаж.</p><div class="actions"><button class="btn" data-scroll="project-form">Получить расчёт</button><a class="btn secondary" href="#/project?section=kit">Собрать комплект Riva</a></div><p class="small form-hint">${planHelp}</p></div>${photo('./assets/meeting.webp','Стол и кресла в переговорной')}</section>
+  return `<div class="shell page">${crumbs([['Комплектация офисов']])}<section class="project-hero"><div class="copy"><h1>Комплектация офисов</h1><p class="intro">Подготовим план расстановки и смету, подберём мебель под бюджет и организуем доставку и монтаж.</p><div class="actions"><button class="btn" data-scroll="project-form">Запросить расчёт офиса</button><a class="btn secondary" href="#/project?section=kit">Собрать комплект Riva</a></div><p class="small form-hint">${officeBrief} ${planHelp}</p></div><div class="project-hero-photo brand-photo">${photo('./assets/meeting.webp','Стол и кресла в переговорной')}</div></section>
     <section class="panel project-design"><h2>Бесплатный дизайн-проект офиса</h2><p>Пришлите план помещения или договоритесь с менеджером о замере. Покажем расстановку мебели до поставки и подготовим смету под ваш бюджет. Можно обсудить проект в нашем шоуруме.</p><a class="text-link" href="#/showroom">Спланировать визит</a></section>
     <div class="project-demo ${useKit?'kit-first':'quote-first'}"><section class="panel" id="kit-builder" tabindex="-1"><h2>Соберите комплект Riva</h2><p class="small">Выберите модели и количество. При смене числа мест количество столов и кресел пересчитывается.</p>
       <label class="field-label" for="set-count">Количество рабочих мест</label><select class="field" id="set-count">${choices.map(count=>`<option value="${count}" ${count===qty?'selected':''}>${seatsLabel(count)}</option>`).join('')}</select><div class="kit-choices">${kitRows(qty)}</div><div id="kit-finishes">${kitFinishFields(qty)}</div><div class="summary" id="estimate" aria-live="polite"></div>
@@ -1430,10 +1434,10 @@ function aboutPage() {
   return page('О компании',`<p class="intro company-intro">«Гранд-Офис» работает с 2019 года. До основания компании команда занималась офисной мебелью под другим брендом. Помогаем обустроить рабочие места, кабинеты руководителей, переговорные, приёмные и зоны ожидания. Доставляем мебель по России.</p>
     <dl class="company-grid company-figures" aria-label="Гранд-Офис в цифрах">${companyFigures.map(([value,label])=>'<div><dt>'+e(value)+'</dt><dd>'+e(label)+'</dd></div>').join('')}</dl>
     <section class="project-feature about-feature">${photo('./assets/company.webp','Офис компании Гранд-Офис в Перми','loading="lazy" width="1158" height="850"')}
-      <div><h2>Команда</h2><p>Специалисты по архитектуре, проектированию и поставкам ведут проект от замера до монтажа. Вместе с вами согласуем планировку, состав мебели, бюджет и сроки.</p><div class="actions"><a class="btn" href="#/project">Обсудить проект</a><a class="text-link" href="#/contacts">Как нас найти</a></div></div></section>
-    <section class="section"><div class="section-head"><h2>Фабрики, склад и сервис</h2></div><div class="steps">
+      <div><h2>От замера до готового офиса</h2><p>Готовим план расстановки и смету, подбираем мебель под бюджет и согласуем доставку и монтаж. Помогаем с обслуживанием и доукомплектацией.</p><div class="actions"><a class="btn" href="${officeQuote}">Запросить расчёт офиса</a><a class="text-link" href="#/contacts">Как нас найти</a></div><p class="small form-hint">${officeBrief}</p></div></section>
+    <section class="section"><div class="section-head"><h2>Фабрики, поставки и сервис</h2></div><div class="steps">
       <div><h3>Российские и европейские фабрики</h3><p>Работаем напрямую с производителями. Подбираем мебель разного ценового уровня под задачу и бюджет.</p></div>
-      <div><h3>Склад в Перми</h3><p>На своём складе комплектуем заказы. Наличие партии и сроки поставки уточняем по выбранным моделям.</p></div>
+      <div><h3>Наличие у поставщиков</h3><p>Проверяем остатки по моделям и отделкам. Подтверждаем наличие партии и ориентировочный срок поставки перед заказом.</p></div>
       <div><h3>Собственный транспорт и сборка</h3><p>Привозим мебель, собираем и расставляем её по плану. После поставки помогаем с сервисом и доукомплектацией.</p></div></div></section>
     <section class="section"><div class="section-head"><h2>Как проходит заказ</h2></div><div class="steps">${informationCards(projectStages)}</div></section>
     ${projectSection()}
@@ -1675,6 +1679,7 @@ async function render(move = false, catalogScroll) {
   const target = Number(args.get('product'));
   const example = key==='project' ? site.projects.find(item=>item.id===args.get('case')) : null;
   const useKit = key==='project' && args.get('section')==='kit' && !target;
+  const openProjectForm = key==='project' && args.get('section')==='form';
   const projectSeats=validSeats(args.get('seats')) || validSeats(kitPreferences.seats) || 4;
   const drawnPlan=key==='project' && !target && !useKit && args.get('plan')==='1' && quotePlan?.v===2 ? quotePlan : null;
   let details, variant, quoteOption, productChoice, correctedRoute;
@@ -1749,7 +1754,7 @@ async function render(move = false, catalogScroll) {
     const kit=document.querySelector('#kit-builder');
     kit?.focus({preventScroll:true});
     kit?.scrollIntoView({block:'start'});
-  } else if (move && (key==='project' && (target || example || drawnPlan) || key==='delivery' && target)) {
+  } else if (openProjectForm || move && (key==='project' && (target || example || drawnPlan) || key==='delivery' && target)) {
     const form=document.querySelector('#request-form h2');
     form?.focus({preventScroll:true});
     form?.scrollIntoView({block:'start'});
@@ -1776,7 +1781,8 @@ async function render(move = false, catalogScroll) {
   }
   main.querySelectorAll('.project-track').forEach(syncCarousel);
   const heading = main.querySelector('h1')?.textContent;
-  document.title = heading ? heading + ' — Гранд-Офис' : 'Гранд-Офис';
+  document.title = !key || key==='main' ? 'Гранд-Офис — офисная мебель и комплектация офисов в Перми'
+    : heading ? heading + ' — Гранд-Офис' : 'Гранд-Офис';
 }
 
 function kitSummary(qty, destination) {
