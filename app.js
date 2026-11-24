@@ -101,7 +101,7 @@ const officeBrief = 'Укажите размеры помещения, числ�
 const companyBenefits = [
   ['Более 15 лет','опыта команды'],
   ['Более 500','выполненных проектов'],
-  ['Наличие у поставщиков','проверяем остатки на нужную партию'],
+  ['Дизайн-проект','бесплатно по плану помещения'],
   ['До двух лет','гарантии в зависимости от модели']
 ];
 const companyFigures = [
@@ -424,12 +424,12 @@ function showDepartmentIndex(settings) {
 
 function catalogDepartmentsPage() {
   const collections = '<a class="catalog-browse-card catalog-entry-card catalog-entry-collections" href="'+e(collectionNavigation())+'">'+
-    '<div class="catalog-entry-label"><h2>Коллекции</h2><p class="small">Найти мебель своей серии</p></div>'+
-    photo('./assets/riva-interior.webp','','width="900" height="720"')+'</a>';
+    '<div class="catalog-entry-label"><h2>Коллекции</h2><p>Столы, тумбы и шкафы одной серии.</p><span class="text-link">Смотреть коллекции</span></div>'+
+    '<figure class="catalog-entry-cover brand-photo">'+photo('./assets/riva-interior.webp','','width="900" height="720"')+'</figure></a>';
   const types = Object.entries(productTypes).map(([type,[name]])=>
     '<a class="catalog-browse-card catalog-entry-card" href="'+e(catalogLink('',{t:type}))+'">'+
-    '<div class="catalog-entry-image">'+photo('./assets/catalog/'+type+'.webp','','width="420" height="210" decoding="async"')+'</div>'+
-    '<div class="catalog-entry-label"><h2>'+e(name)+'</h2></div></a>').join('');
+    '<div class="catalog-entry-label"><h2>'+e(name)+'</h2></div>'+
+    '<div class="catalog-entry-image">'+photo('./assets/catalog/'+type+'.webp','','decoding="async"')+'</div></a>').join('');
   return page('Каталог','<nav class="catalog-entry-grid" aria-label="Каталог мебели">'+collections+types+'</nav>');
 }
 
@@ -957,7 +957,7 @@ function itemPage(item, detail, variant, origin, choice) {
       <p class="small" id="variant-status" role="status" hidden></p>
       <div class="actions"><button class="btn" data-add="${item.id}" ${(opts.length && !selected) || liveStock===0?'disabled':''}>В корзину</button><a class="btn secondary" data-item-quote href="#/project?${context}">Запросить расчёт</a></div><p class="result" id="cart-result" role="status" hidden></p>
       ${finishLink?'<p class="product-finish-link"><a class="text-link" href="'+e(finishLink)+'">Мебель этой коллекции в такой же отделке</a></p>':''}
-      <div class="logistics"><p class="stock">${liveStock>0 ? 'Доступно у поставщика: '+liveStock+' шт.' : ((variant?.backorder ?? item.backorder)?'Под заказ':'Наличие уточняется')}</p><p class="small">${e(logistics(item))}</p></div>
+      <div class="logistics"><p class="stock">${liveStock>0 ? 'Доступно: '+liveStock+' шт.' : ((variant?.backorder ?? item.backorder)?'Под заказ':'Наличие уточняется')}</p><p class="small">${e(logistics(item))}</p></div>
       <p class="small"><a class="text-link" href="#/delivery?${context}">Рассчитать доставку этого товара</a></p>
       ${warranty?'<p class="small">Гарантия · '+e(warranty)+'</p>':''}
       ${item.url && !officeConfig.sameStoreDomain?'<p class="small source-link"><a class="text-link" href="'+e(item.url)+'">Карточка в действующем магазине</a></p>':''}</section></div>
@@ -1437,7 +1437,7 @@ function aboutPage() {
       <div><h2>От замера до готового офиса</h2><p>Готовим план расстановки и смету, подбираем мебель под бюджет и согласуем доставку и монтаж. Помогаем с обслуживанием и доукомплектацией.</p><div class="actions"><a class="btn" href="${officeQuote}">Запросить расчёт офиса</a><a class="text-link" href="#/contacts">Как нас найти</a></div><p class="small form-hint">${officeBrief}</p></div></section>
     <section class="section"><div class="section-head"><h2>Фабрики, поставки и сервис</h2></div><div class="steps">
       <div><h3>Российские и европейские фабрики</h3><p>Работаем напрямую с производителями. Подбираем мебель разного ценового уровня под задачу и бюджет.</p></div>
-      <div><h3>Наличие у поставщиков</h3><p>Проверяем остатки по моделям и отделкам. Подтверждаем наличие партии и ориентировочный срок поставки перед заказом.</p></div>
+      <div><h3>Смета до заказа</h3><p>Согласуем список мебели, отделки, стоимость и ориентировочные сроки поставки.</p></div>
       <div><h3>Собственный транспорт и сборка</h3><p>Привозим мебель, собираем и расставляем её по плану. После поставки помогаем с сервисом и доукомплектацией.</p></div></div></section>
     <section class="section"><div class="section-head"><h2>Как проходит заказ</h2></div><div class="steps">${informationCards(projectStages)}</div></section>
     ${projectSection()}
