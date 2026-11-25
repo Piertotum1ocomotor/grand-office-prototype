@@ -140,7 +140,10 @@ const card = (item, origin) => {
   const values = [item.kind==='parts'?'Комплектующая':item.kind==='modules'?'Модуль':'',item.sku ? 'Арт. '+item.sku : '',
     dimensionsLabel(item.dimensions),needsDimensionCheck(item)?'Габариты уточняются':''].filter(Boolean);
   const link = '#/product/'+item.id+'?from='+encodeURIComponent(origin);
-  return `<article class="product" data-product-id="${item.id}"><a class="product-photo" href="${e(link)}" aria-label="${e(title)}" data-base-photo="${e(item.image || '')}">${cardPhoto(item.image)}</a><div class="product-card"><h3><a href="${e(link)}" title="${e(title)}">${e(title)}</a></h3><p class="meta">${e(values.join(' · '))}</p>${finishPreview(finishesFor(item.id))}<p class="price" data-base-price="${e(price)}">${price}</p><p class="small">${item.backorder ? 'Под заказ' : 'Наличие уточняется'}</p><p class="sr-only" role="status" data-product-preview-status></p></div></article>`;
+  return `<article class="product" data-product-id="${item.id}"><a class="product-photo" href="${e(link)}" aria-label="${e(title)}" data-base-photo="${e(item.image || '')}">${cardPhoto(item.image)}</a><div class="product-card"><h3><a href="${e(link)}" title="${e(title)}">${e(title)}</a></h3><p class="meta">${e(values.join(' · '))}</p>${finishPreview(finishesFor(item.id))}
+    <div class="product-purchase"><div><p class="price" data-base-price="${e(price)}">${price}</p><p class="small">${item.backorder ? 'Под заказ' : 'Наличие уточняется'}</p></div>
+    <button class="catalog-add" type="button" data-add="${item.id}" aria-label="${e('Добавить в корзину: '+title)}" title="Добавить в корзину"><img src="./assets/cart-icon.svg" width="22" height="24" alt=""></button></div>
+    <p class="small sr-only" role="status" data-card-cart-status></p><p class="sr-only" role="status" data-product-preview-status></p></div></article>`;
 };
 const departmentLink = ([, , category]) => catalogLink('',category==='chairs' ? {t:category} : {c:category});
 const categoryTile = (name, image, href) =>
@@ -1181,6 +1184,67 @@ function saveCart() {
 const cartLimit = row => Math.min(row.cap || 999,999);
 const cartItemDetails = row => [row.variant,row.sku?'Арт. '+row.sku:''].filter(Boolean).join(' · ');
 
+async function addProductToCart(control, id) {
+  if (control.getAttribute('aria-busy')==='true') return;
+  const card = control.closest('.product[data-product-id]');
+  const route = currentRoute();
+  const origin = catalogOrigin(card ? route : getRoute(route).args.get('from'));
+  const link = card?.querySelector('.product-photo');
+  const productRoute = link && (link.dataset.route || link.getAttribute('href'));
+  const productChoice = Number(main.querySelector('#product-option')?.value || 0);
+  const result = card?.querySelector('[data-card-cart-status]') || main.querySelector('#cart-result');
+  const notify = (message, added=false) => {
+    if (!result || !control.isConnected) return;
+    if (card) {
+      result.classList.toggle('sr-only',added);
+      result.textContent=message;
+      control.toggleAttribute('data-added',added && productRoute===(link.dataset.route || link.getAttribute('href')));
+    } else {
+      result.hidden=false;
+      result.textContent=message;
+      if (added) {
+        result.insertAdjacentHTML('beforeend',' <a class="text-link" href="#/cart">Открыть корзину</a>');
+        prepareLinks(result);
+      }
+    }
+  };
+  control.setAttribute('aria-busy','true');
+  try {
+    const detail = await loadDetail(id);
+    const item = productById.get(id);
+    if (!detail || !item) {
+      notify('Не удалось добавить товар. Попробуйте ещё раз.');
+      return;
+    }
+    const options = detail[2] || [];
+    let choice = card ? productChoiceFor(id,getRoute(productRoute).args,detail) : productChoice;
+    if (card && !choice && options.length===1) choice=options[0][0];
+    const option = options.find(([variantId])=>variantId===choice);
+    if (options.length && !option) {
+      if (card && control.isConnected) navigate(productRoute);
+      else notify('Выберите вариант товара.');
+      return;
+    }
+    const variation = option ? await site.variation(id,choice) : null;
+    const key = id+':'+(choice || 0);
+    const row = cart.find(entry=>entry.key===key);
+    const cap = variation?.stock ?? option?.[3] ?? (hasBackend && !options.length ? detail[5] : null) ?? 999;
+    if (!cap || row?.qty>=Math.min(cap,999)) {
+      notify(cap ? 'В корзине уже максимально доступное количество.' : 'Товар сейчас недоступен.');
+      return;
+    }
+    if (row) row.qty=Math.min(cap,999,row.qty+1);
+    else cart.push({key,id,choice:choice || 0,variant:option?.[1],name:item.name,sku:item.sku,
+      image:variation?.image || item.image,price:priceOf(item,option,variation),qty:1,cap});
+    if (origin) site.save('basket-origin',origin);
+    saveCart();
+    notify(card && option?.[1] ? 'Добавлено в корзину. Отделка «'+option[1]+'».' : 'Товар добавлен.',true);
+    if (!control.isConnected && getRoute().key==='cart') await render();
+  } finally {
+    control.removeAttribute('aria-busy');
+  }
+}
+
 function updateCartQuantity(input, value) {
   const row = cart[Number(input.dataset.qty)];
   if (!row) return;
@@ -2074,6 +2138,10 @@ async function previewProductFinish(card, control) {
   const gallery=card.querySelector('.product-photo');
   const price=card.querySelector('.price');
   const status=card.querySelector('[data-product-preview-status]');
+  card.querySelector('.catalog-add').removeAttribute('data-added');
+  const cartStatus=card.querySelector('[data-card-cart-status]');
+  cartStatus.classList.add('sr-only');
+  cartStatus.textContent='';
   const isCurrent=()=>card.isConnected && control.getAttribute('aria-pressed')==='true';
   for (const link of [gallery,card.querySelector('h3 a')]) {
     const {args}=getRoute(link.dataset.route || link.getAttribute('href'));
@@ -2227,33 +2295,7 @@ main.addEventListener('click', async (event)=>{
     const next = main.querySelector(`[data-remove="${Math.min(Number(remove),cart.length-1)}"]`) || main.querySelector('.btn');
     next?.focus();
   }
-  if (!add) return;
-  const origin = catalogOrigin(getRoute().args.get('from'));
-  const result = main.querySelector('#cart-result');
-  const item = productById.get(Number(add));
-  const choice = Number(document.querySelector('#product-option')?.value || 0);
-  const data = await site.getDetails(item.id).catch(()=>null);
-  const option = data?.[2]?.find(o=>o[0]===choice);
-  const variation = option ? await site.variation(item.id,choice) : null;
-  const key = item.id + ':' + choice;
-  const row=cart.find(r=>r.key===key);
-  const cap = variation?.stock ?? option?.[3] ?? (hasBackend && !data?.[2]?.length ? data?.[5] : null) ?? 999;
-  if (!cap || row?.qty>=Math.min(cap,999)) {
-    if (result) {
-      result.hidden=false;
-      result.textContent=cap ? 'В корзине уже максимально доступное количество.' : 'Товар сейчас недоступен.';
-    }
-    return;
-  }
-  if (row) row.qty=Math.min(cap,999,row.qty+1);
-  else cart.push({key,id:item.id,choice,variant:option?.[1],name:item.name,sku:item.sku,image:variation?.image || item.image,price:priceOf(item,option,variation),qty:1,cap});
-  if (origin) site.save('basket-origin',origin);
-  saveCart();
-  if (result) {
-    result.hidden=false;
-    result.innerHTML='Товар добавлен. <a class="text-link" href="#/cart">Открыть корзину</a>';
-    prepareLinks(result);
-  }
+  if (add) await addProductToCart(control,Number(add));
 });
 main.addEventListener('change',event=>{
   const element=event.target;
