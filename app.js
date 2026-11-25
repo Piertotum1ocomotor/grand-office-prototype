@@ -124,7 +124,8 @@ function finishPreview(labels) {
 }
 
 function finishField(id, title, placeholder, items, value, attributes='') {
-  const options=[['',placeholder],...items.map(([key,label])=>[String(key),label])];
+  const options=items.map(([key,label])=>[String(key),label]);
+  if (placeholder!==null) options.unshift(['',placeholder]);
   const selected=options.find(([key])=>key===String(value)) || options[0];
   return '<div class="finish-field" role="group" aria-labelledby="'+id+'-label"><span class="field-label" id="'+id+'-label">'+e(title)+'</span>'+
     '<select id="'+id+'" '+attributes+' hidden>'+options.map(([key,label])=>'<option value="'+e(key)+'"'+
@@ -132,18 +133,19 @@ function finishField(id, title, placeholder, items, value, attributes='') {
     finishSwatchList(options,selected[0],8)+'<p class="finish-name" aria-hidden="true">'+e(selected[0]?selected[1]:'')+'</p></div>';
 }
 
+const cardPhoto = image => photo(image,'','loading="lazy" width="380" height="235"');
 const card = (item, origin) => {
   const title = productTitle(item.name);
+  const price = money(item.price,item.max);
   const values = [item.kind==='parts'?'Комплектующая':item.kind==='modules'?'Модуль':'',item.sku ? 'Арт. '+item.sku : '',
     dimensionsLabel(item.dimensions),needsDimensionCheck(item)?'Габариты уточняются':''].filter(Boolean);
   const link = '#/product/'+item.id+'?from='+encodeURIComponent(origin);
-  return `<article class="product"><a class="product-photo" href="${e(link)}" aria-label="${e(title)}">${photo(item.image,'','loading="lazy" width="380" height="235"')}</a><div class="product-card"><h3><a href="${e(link)}">${e(title)}</a></h3>${values.length ? '<p class="meta">'+e(values.join(' · '))+'</p>' : ''}${finishPreview(finishesFor(item.id))}<p class="price">${money(item.price,item.max)}</p><p class="small">${item.backorder ? 'Под заказ' : 'Наличие уточняется'}</p></div></article>`;
+  return `<article class="product" data-product-id="${item.id}"><a class="product-photo" href="${e(link)}" aria-label="${e(title)}" data-base-photo="${e(item.image || '')}">${cardPhoto(item.image)}</a><div class="product-card"><h3><a href="${e(link)}" title="${e(title)}">${e(title)}</a></h3><p class="meta">${e(values.join(' · '))}</p>${finishPreview(finishesFor(item.id))}<p class="price" data-base-price="${e(price)}">${price}</p><p class="small">${item.backorder ? 'Под заказ' : 'Наличие уточняется'}</p><p class="sr-only" role="status" data-product-preview-status></p></div></article>`;
 };
 const departmentLink = ([, , category]) => catalogLink('',category==='chairs' ? {t:category} : {c:category});
-const categoryCard = department => {
-  const [name,image] = department;
-  return `<a class="category" href="${e(departmentLink(department))}">${photo('./assets/original-home/'+image,'','loading="lazy" width="600" height="489"')}<span>${e(name)}</span></a>`;
-};
+const categoryTile = (name, image, href) =>
+  `<a class="category" href="${e(href)}">${photo(image,'','loading="lazy"')}<span>${e(name)}</span></a>`;
+const categoryCard = department => categoryTile(department[0],'./assets/original-home/'+department[1],departmentLink(department));
 
 function projectShowcase(excluded) {
   return `<div class="project-carousel"><ul class="project-track" tabindex="0" aria-label="Проекты Гранд-Офиса">${site.projects.filter(project=>project.id!==excluded).map(project=>`<li><a class="project-tile" href="#/projects/${project.id}">${photo('./assets/'+project.image,project.zone,'loading="lazy" width="656" height="505"')}<div><h3>${e(project.name)}</h3><p>${e(project.zone)}</p></div></a></li>`).join('')}</ul>
@@ -189,9 +191,9 @@ const informationCards = rows => rows.map(([title,copy])=>'<div><h3>'+e(title)+'
 
 function home() {
   return `<div class="shell">
-    <section class="hero" aria-labelledby="home-title">
-      <div class="hero-copy"><p class="eyebrow">Офисная мебель в Перми</p><h1 id="home-title">Проектируем логику пространства</h1>
-      <p>Спланируем офис, подберём мебель, подготовим смету, доставим и соберём.</p>
+    <section class="hero home-hero" aria-labelledby="home-title">
+      <div class="hero-copy"><div class="home-hero-title"><p class="eyebrow">Офисная мебель в Перми</p><h1 id="home-title">Проектируем логику пространства</h1>
+      <p>Спланируем офис, подберём мебель, подготовим смету, доставим и соберём.</p></div>
       <div class="actions"><a class="btn" href="${officeQuote}">Запросить расчёт офиса</a><a class="btn secondary" href="#/catalog">Перейти в каталог</a></div></div>
       <div class="hero-photo">${photo('./assets/original-home/hero.webp','Кабинет с деревянным столом и терракотовыми креслами','width="1536" height="1024" fetchpriority="high"')}</div>
     </section>
@@ -585,12 +587,12 @@ function catalogDepartmentsPage() {
     '<div class="catalog-entry-label"><h2>Коллекции</h2><p>Столы, тумбы и шкафы одной серии.</p><span class="text-link">Смотреть коллекции</span></div>'+
     '<figure class="catalog-entry-cover brand-photo">'+photo('./assets/riva-interior.webp','','width="900" height="720"')+'</figure></a>';
   const types = Object.entries(productTypes).map(([type,[name]])=>
-    '<a class="chip" href="'+e(catalogLink('',{t:type}))+'">'+e(type==='chairs'?'Кресла и стулья':name)+'</a>').join('');
+    categoryTile(type==='chairs'?'Кресла и стулья':name,'./assets/catalog/'+type+'.webp',catalogLink('',{t:type}))).join('');
   return page('Каталог',collections+
-    '<section class="catalog-entry-types" aria-labelledby="catalog-types-title"><div class="section-head"><h2 id="catalog-types-title">Тип мебели</h2>'+
-    '<a class="text-link" href="#/catalog?view=products">Все товары</a></div><nav class="quick-categories" aria-label="Тип мебели">'+types+'</nav></section>'+
     '<section class="catalog-entry-departments" aria-labelledby="departments-title">'+
-    '<h2 id="departments-title">Мебель по назначению</h2><div class="category-grid department-tiles">'+catalogDepartments.map(categoryCard).join('')+'</div></section>');
+    '<h2 id="departments-title">Мебель по назначению</h2><div class="category-grid department-tiles">'+catalogDepartments.map(categoryCard).join('')+'</div></section>'+
+    '<section class="catalog-entry-types" aria-labelledby="catalog-types-title"><div class="section-head"><h2 id="catalog-types-title">Тип мебели</h2>'+
+    '<a class="text-link" href="#/catalog?view=products">Все товары</a></div><nav class="category-grid department-tiles catalog-type-tiles" aria-label="Тип мебели">'+types+'</nav></section>');
 }
 
 const lookalikeLetters = [...'авсенкмортху'];
@@ -958,10 +960,11 @@ function catalogPage(settings, preview, unavailable) {
     ['Модули',known.filter(entry=>entry.kind==='modules')],
     ['Комплектующие',known.filter(entry=>entry.kind==='parts')],
     [incompleteTitle,items.filter(entry=>!complete(entry))]
-  ];
-  const grid = groups.filter(([,rows])=>rows.length).map(([heading,rows])=>'<section class="catalog-group">'+
-    (heading?'<h2>'+heading+'</h2>':'')+
-    (heading===incompleteTitle?'<p class="small">Размеры этих товаров нужно уточнить перед заказом.</p>':'')+
+  ].filter(([,rows])=>rows.length);
+  const groupHeading = heading => heading ? '<h2>'+heading+'</h2>'+
+    (heading===incompleteTitle?'<p class="small">Размеры этих товаров нужно уточнить перед заказом.</p>':'') : '';
+  const firstGroupHeading = groupHeading(groups[0]?.[0]);
+  const grid = groups.map(([heading,rows],index)=>'<section class="catalog-group">'+(index?groupHeading(heading):'')+
     '<div class="product-grid catalog-grid">'+rows.map(item=>card(item,toCatalog())).join('')+'</div></section>').join('');
   const cleared=toCatalog({...Object.fromEntries(filterFields.map(key=>[key,null])),p:null,changedfinish:null,
     ...(seriesCategory?{series:seriesCategory.slug}:{}),view:selected ? settings.get('view') : 'products'});
@@ -1050,7 +1053,7 @@ function catalogPage(settings, preview, unavailable) {
     '<div class="catalog-filter-fields">'+filters+'</div><div class="filter-actions"><button class="btn" type="submit">Применить</button>'+
     (filterCount?'<a class="text-link reset-filters" href="'+e(cleared)+'">Очистить фильтры</a>':'')+
     '</div></form></details><details class="catalog-directory"><summary>Разделы каталога</summary><nav aria-label="Разделы каталога">'+
-    categoryItems(catChildren.get(0) || [],selected,settings)+'</nav></details></aside><div class="catalog-results"><div class="catalog-tools">'+
+    categoryItems(catChildren.get(0) || [],selected,settings)+'</nav></details></aside><div class="catalog-toolbar"><div class="catalog-tools">'+
     (selected?.partsOnly?'<p class="catalog-notice">В этом разделе собраны отдельные модули и комплектующие. <a class="text-link" href="'+
       e(catalogLink('',{t:/шкаф/i.test(selected.name)?'cabinets':null,view:'products'}))+'">'+
       (/шкаф/i.test(selected.name)?'Посмотреть готовые шкафы':'Посмотреть готовую мебель')+'</a></p>':'')+
@@ -1059,7 +1062,8 @@ function catalogPage(settings, preview, unavailable) {
         ...(dimensionFields.includes(key) && !dimensionFields.some(other=>other!==key&&settings.has(other))?{unknown:null}:{})}))+'">'+e(label)+' <span aria-hidden="true">×</span></a>').join('')+'</div>':'')+
     '</div><div class="catalog-heading"><p class="count-label">Найдено: '+catalogNumber.format(count)+'</p>'+sortControl+
     '</div>'+ (similar && count?'<p class="catalog-notice sku-similar">Точного совпадения нет. Показаны похожие артикулы.</p>':'')+
-    (grid || empty)+pagination+'</div></div>',levels);
+    (firstGroupHeading?'<div class="catalog-group catalog-first-group-heading">'+firstGroupHeading+'</div>':'')+
+    '</div><div class="catalog-results">'+(grid || empty)+pagination+'</div></div>',levels);
 }
 
 function logistics(item) {
@@ -1100,6 +1104,19 @@ function catalogOrigin(address) {
     catalogLink(catalogSettings(getRoute(address).args)) : '';
 }
 
+function productHasColorVariants(id, specs, options) {
+  return options.some(([,label])=>label) && (finishesFor(id).length>0 ||
+    specs.some(([label])=>/^(?:цвет(?: изделия)?|отделка)$/i.test(label.trim())) ||
+    options.every(([,label])=>Object.hasOwn(finishSwatches,finishKey(label))));
+}
+
+function optionForFinish(options, finish) {
+  const key=finishKey(finish);
+  if (!key) return;
+  const matches=options.filter(([,label])=>finishKey(label)===key);
+  if (matches.length===1) return matches[0];
+}
+
 function itemPage(item, detail, variant, origin, choice) {
   const [images=[],specs=[],opts=[],description=''] = detail || [];
   const baseImages = images.length ? images : item.image ? [item.image] : [];
@@ -1119,10 +1136,9 @@ function itemPage(item, detail, variant, origin, choice) {
   const finishes = finishesFor(item.id);
   const finish = selected ? finishes.find(value=>finishKey(value)===finishKey(selected[1])) : !opts.length && finishes[0];
   const finishLink = collection && finish ? catalogLink('',{c:collection.slug,finish}) : '';
-  const hasColorVariants=opts.length && (finishes.length || specs.some(([label])=>/^(?:цвет(?: изделия)?|отделка)$/i.test(label.trim())) ||
-    opts.every(([,label])=>Object.hasOwn(finishSwatches,finishKey(label))));
+  const hasColorVariants=productHasColorVariants(item.id,specs,opts);
   const finishOptions=opts.map(([id,label])=>[id,label || 'Вариант '+id]);
-  const optionField=hasColorVariants ? finishField('product-option','Отделка','Выберите вариант',finishOptions,selected?.[0],'data-id="'+item.id+'"') :
+  const optionField=hasColorVariants ? finishField('product-option','Отделка',null,finishOptions,selected?.[0],'data-id="'+item.id+'"') :
     opts.length ? '<label><span class="field-label">Вариант</span><select class="field" id="product-option" data-id="'+item.id+'" '+
       (selected?'':'aria-describedby="variant-help"')+'><option value="">Выберите вариант</option>'+
       finishOptions.map(([id,label])=>'<option value="'+id+'" '+(id===selected?.[0]?'selected':'')+'>'+e(label)+'</option>').join('')+'</select></label>' :
@@ -1855,15 +1871,21 @@ async function loadProjectItems(product) {
   await Promise.all(ids.filter(id=>!productDetails.has(id)).map(loadDetail));
 }
 
-function productChoiceFor(id, args, options) {
-  if (args.has('variant')) return Number(args.get('variant'));
+function productChoiceFor(id, args, [,specs=[],options=[]]=[]) {
+  const colorVariants=productHasColorVariants(id,specs,options);
+  const first = colorVariants ? options.find(([,label])=>label)[0] : null;
+  if (args.has('variant')) {
+    const requested=Number(args.get('variant'));
+    if (options.some(([choice])=>choice===requested)) return requested;
+  }
+  const selectedFinish=optionForFinish(options,args.get('finish'));
+  if (selectedFinish) return selectedFinish[0];
   const origin = catalogOrigin(args.get('from'));
   const finish = origin && getRoute(origin).args.get('finish');
-  if (finish && finishesFor(id).some(label=>finishKey(label)===finishKey(finish))) {
-    const matches = options.filter(option=>finishKey(option[1])===finishKey(finish));
-    if (matches.length===1) return matches[0][0];
-  }
-  return site.session('selected-'+id,null);
+  const filtered=finishesFor(id).some(label=>finishKey(label)===finishKey(finish)) && optionForFinish(options,finish);
+  if (filtered) return filtered[0];
+  const saved=site.session('selected-'+id,null);
+  return options.some(([choice])=>choice===saved) ? saved : first;
 }
 
 async function render(move = false, catalogScroll) {
@@ -1919,9 +1941,9 @@ async function render(move = false, catalogScroll) {
     if (target) details=await loadDetail(target);
   } else if (key==='product') {
     await loadCatalogFacts().catch(()=>null);
-    [details] = await Promise.all([loadDetail(product),loadCollectionDirectory().catch(()=>null),loadConfig]);
-    productChoice=productChoiceFor(product,args,details?.[2] || []);
-    if (details?.[2]?.some(item=>item[0]===productChoice)) variant = await site.variation(product,productChoice);
+    [details] = await Promise.all([loadDetail(product),loadCollectionDirectory().catch(()=>null),loadConfig,swatches]);
+    productChoice=productChoiceFor(product,args,details || []);
+    if (productChoice) variant = await site.variation(product,productChoice);
   } else await loadConfig;
   if (swatches) await swatches;
   if (current!==revision) return;
@@ -2045,6 +2067,46 @@ function showFinishName(field, button) {
 function resetFinishName(field) {
   showFinishName(field,field.querySelector('[data-finish-value][aria-pressed="true"]'));
 }
+
+async function previewProductFinish(card, control) {
+  const id=Number(card.dataset.productId);
+  const label=control.dataset.finishLabel;
+  const gallery=card.querySelector('.product-photo');
+  const price=card.querySelector('.price');
+  const status=card.querySelector('[data-product-preview-status]');
+  const isCurrent=()=>card.isConnected && control.getAttribute('aria-pressed')==='true';
+  for (const link of [gallery,card.querySelector('h3 a')]) {
+    const {args}=getRoute(link.dataset.route || link.getAttribute('href'));
+    args.set('finish',label);
+    link.href='#/product/'+id+'?'+args;
+  }
+  prepareLinks(card);
+  const basePhoto=gallery.dataset.basePhoto;
+  if (gallery.querySelector('img')?.getAttribute('src')!==basePhoto) gallery.innerHTML=cardPhoto(basePhoto);
+  price.textContent=price.dataset.basePrice;
+  status.textContent='Загружаем фото отделки «'+label+'».';
+
+  const detail=await site.getDetails(id).catch(()=>null);
+  const option=optionForFinish(detail?.[2] || [],label);
+  if (!isCurrent()) return;
+  const variant=option && await site.variation(id,option[0]);
+  if (!isCurrent()) return;
+  const amount=variant?.price ?? option?.[2];
+  if (amount!=null) price.textContent=money(amount);
+  if (variant?.image) {
+    const image=new Image();
+    image.src=variant.image;
+    const loaded=await image.decode().then(()=>true,()=>false);
+    if (!isCurrent()) return;
+    if (loaded) {
+      gallery.innerHTML=cardPhoto(variant.image);
+      status.textContent='Показано фото отделки «'+label+'».';
+      return;
+    }
+  }
+  status.textContent='Отделка «'+label+'». Показано общее фото модели.';
+}
+
 main.addEventListener('mouseover',event=>{
   const button=event.target.closest('[data-finish-value]');
   if (button) showFinishName(button.closest('.finish-field'),button);
@@ -2101,13 +2163,15 @@ main.addEventListener('click', async (event)=>{
   if (control.hasAttribute('data-finish-value')) {
     const field=control.closest('.finish-field');
     const select=field.querySelector('select');
+    const product=control.closest('.product[data-product-id]');
+    if (product && control.getAttribute('aria-pressed')==='true') return;
     field.querySelector('[aria-pressed="true"]')?.setAttribute('aria-pressed','false');
     control.setAttribute('aria-pressed','true');
     showFinishName(field,control);
     if (select && select.value!==control.dataset.finishValue) {
       select.value=control.dataset.finishValue;
       select.dispatchEvent(new Event('change',{bubbles:true}));
-    }
+    } else if (product) await previewProductFinish(product,control);
     return;
   }
   const {photo, add, remove, scroll} = control.dataset;
@@ -2229,7 +2293,8 @@ main.addEventListener('change',event=>{
     site.save('selected-'+element.dataset.id,choice);
     const {args} = getRoute();
     const origin = catalogOrigin(args.get('from'));
-    if (args.has('variant') || origin && getRoute(origin).args.has('finish')) {
+    if (args.has('variant') || args.has('finish') || origin && getRoute(origin).args.has('finish')) {
+      args.delete('finish');
       args.set('variant',String(choice));
       replaceRoute('#/product/'+element.dataset.id+'?'+args);
     }
