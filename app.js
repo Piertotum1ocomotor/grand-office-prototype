@@ -1106,7 +1106,7 @@ function catalogOrigin(address) {
 
 function productHasColorVariants(id, specs, options) {
   return options.some(([,label])=>label) && (finishesFor(id).length>0 ||
-    specs.some(([label])=>/^(?:цвет(?: изделия)?|отделка)$/i.test(label.trim())) ||
+    specs.some(([label])=>/^(?:цвет|отделка)(?:\s|$)/i.test(label.trim())) ||
     options.every(([,label])=>Object.hasOwn(finishSwatches,finishKey(label))));
 }
 
