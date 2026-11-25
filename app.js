@@ -944,7 +944,7 @@ function catalogPage(settings, preview, unavailable) {
   const forChairs=type==='chairs' || (!type && (chairSection || Object.hasOwn(chairPurposes,purpose)));
   const purposeOptions=forTables?tablePurposes:forChairs?chairPurposes:null;
   const filters=collectionFilter(type,selected,series || collection?.slug || '',collection,chairSeries)+catalogRangeFields(priceBounds)+
-    '<details class="filter-section" '+(dimensions.length || desktop?'open':'')+'><summary>Габариты</summary><div class="filter-section-body">'+
+    '<details class="filter-section" '+(dimensions.length?'open':'')+'><summary>Габариты</summary><div class="filter-section-body">'+
     dimensionBounds.map(catalogRangeFields).join('')+'<label class="unknown-width"><input type="checkbox" name="unknown" value="1" '+
     (includeUnknown?'checked':'')+' '+(dimensions.length?'':'disabled')+'> Включить товары без всех указанных габаритов</label></div></details>'+
     '<details class="filter-section" '+(purpose || shape || series || part || forTables || forChairs?'open':'')+
@@ -1269,7 +1269,7 @@ function cartPage() {
         <input type="number" class="field" id="cart-qty-${i}" min="1" max="${cartLimit(row)}" step="1" inputmode="numeric" value="${row.qty}" data-qty="${i}">
         <button type="button" data-cart-step="1" aria-label="Увеличить количество" ${row.qty>=cartLimit(row)?'disabled':''}>+</button>
       </div></div>
-      <strong class="line-total" aria-live="polite">${rowAmount(row)}</strong><button class="cart-remove" type="button" data-remove="${i}">Убрать</button>
+      <strong class="line-total" aria-live="polite">${rowAmount(row)}</strong><button class="cart-remove" type="button" data-remove="${i}" aria-label="${e('Убрать из корзины: '+productTitle(row.name))}" title="Убрать из корзины"><span aria-hidden="true">×</span></button>
       </div>`).join('')}</section>
       <aside class="panel cart-summary"><h2>Итого по мебели</h2><p class="small">Город: ${e(city)}. В расчёте подтвердим наличие, сроки и стоимость услуг.</p>
       <div class="summary"><div><span>Мебель</span><strong id="basket-total" aria-live="polite">${furnitureTotal()}</strong></div><div><span>Доставка, подъём и сборка</span><span>По запросу</span></div></div>
