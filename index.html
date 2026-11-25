@@ -7,29 +7,28 @@
   <meta name="description" content="Офисная мебель в Перми. Столы, кресла и комплектация офисов с доставкой и сборкой.">
   <meta name="theme-color" content="#ffffff">
   <title>Гранд-Офис — офисная мебель и комплектация офисов</title>
-  <link rel="stylesheet" href="./style.css">
+  <link rel="stylesheet" href="./style.css?v=20261125">
   <script src="./store.js" defer></script>
   <script src="./workspace.js" defer></script>
   <script src="./planner.js" defer></script>
-  <script src="./app.js" defer></script>
+  <script src="./app.js?v=20261125" defer></script>
 </head>
 <body>
   <a class="skip" href="#main">К содержанию</a>
   <header class="site-header">
     <div class="shell topbar">
       <button class="city-button" id="city-button" type="button"><span aria-hidden="true">⌖</span> <span id="city-name">Пермь</span> <span aria-hidden="true">⌄</span></button>
-      <nav class="top-links" aria-label="О компании и услугах"><a href="#/about">О компании</a><a href="#/projects">Проекты</a><a href="#/delivery">Доставка и сборка</a><a href="#/contacts">Контакты</a></nav>
+      <nav class="top-links" aria-label="О компании и услугах"><a href="#/about">О компании</a><a href="#/projects">Проекты</a><a href="#/showroom" data-nav="showroom">Шоурум</a><a href="#/delivery">Доставка и сборка</a><a href="#/contacts">Контакты</a></nav>
       <div class="top-contact"><a class="phone" href="tel:+73422155898">+7 (342) 215-58-98</a><a class="header-email" href="mailto:grand-office159@yandex.ru">grand-office159@yandex.ru</a></div>
     </div>
     <div class="shell header">
       <a class="logo" href="#/" aria-label="Гранд-Офис — главная"><img src="./assets/logo.svg" alt="Гранд-Офис" width="244" height="43"></a>
       <nav class="nav" aria-label="Основная навигация">
         <div class="catalog-menu">
-          <a class="btn" id="catalog-trigger" href="#/catalog" data-nav="catalog" aria-expanded="false" aria-controls="header-catalog">Каталог <i class="chevron catalog-hover-arrow" aria-hidden="true"></i></a>
-          <button class="btn catalog-toggle" type="button" aria-label="Разделы каталога" aria-expanded="false" aria-controls="header-catalog"><i class="chevron" aria-hidden="true"></i></button>
+          <button class="btn" id="catalog-trigger" type="button" data-nav="catalog" aria-expanded="false" aria-controls="header-catalog"><span class="catalog-burger" aria-hidden="true"></span>Каталог</button>
           <div class="catalog-menu-panel" id="header-catalog" hidden>
-            <div><p>Тип мебели</p><a href="#/catalog?t=tables">Столы</a><a href="#/catalog?t=chairs">Кресла и стулья</a><a href="#/catalog?t=cabinets">Шкафы</a><a href="#/catalog?t=pedestals">Тумбы</a><a href="#/catalog?t=shelving">Стеллажи</a><a href="#/catalog?t=sofas">Диваны</a><a href="#/catalog?k=parts">Комплектующие</a></div>
-            <div><p>Разделы</p><a href="#/catalog?view=collections">Все коллекции</a><a href="#/catalog?c=ofisnaya-mebel-dlya-personala">Мебель для персонала</a><a href="#/catalog?c=mebel-v-kabinet-rukovoditelya">Кабинеты руководителей</a><a href="#/catalog?c=mebel-dlya-peregovornyh">Переговорные</a><a href="#/catalog?c=stojki-resepshn">Ресепшен</a><a href="#/catalog?c=metallicheskaya-mebel">Металлическая мебель</a><a href="#/catalog?c=ofisnye-divany">Зоны отдыха и ожидания</a><a href="#/catalog?c=mebel-dlya-ofisnoj-kuhni">Обеденная зона</a><a class="text-link" href="#/catalog">Весь каталог</a></div>
+            <div class="catalog-menu-types"><p>Тип мебели</p><a href="#/catalog?t=tables">Столы</a><a href="#/catalog?t=chairs">Кресла и стулья</a><a href="#/catalog?t=cabinets">Шкафы</a><a href="#/catalog?t=pedestals">Тумбы</a><a href="#/catalog?t=shelving">Стеллажи</a><a href="#/catalog?t=sofas">Диваны</a><a href="#/catalog?k=parts">Комплектующие</a><a href="#/catalog?view=collections">Все коллекции</a><a class="text-link" href="#/catalog">Весь каталог</a></div>
+            <div class="catalog-menu-departments" data-menu-departments><p>Мебель по назначению</p></div>
           </div>
         </div>
         <div class="header-types"><a href="#/catalog?t=tables">Столы</a><a href="#/catalog?t=chairs">Кресла</a><a href="#/catalog?t=cabinets">Шкафы</a><a href="#/catalog?c=mebel-dlya-peregovornyh">Переговорные</a></div>
@@ -47,7 +46,7 @@
   <dialog class="mobile-menu" id="mobile-menu" aria-labelledby="mobile-menu-title">
     <div class="mobile-menu-content">
       <div class="mobile-menu-heading"><h2 id="mobile-menu-title">Меню</h2><form method="dialog"><button class="mobile-menu-close" aria-label="Закрыть меню" autofocus>×</button></form></div>
-      <nav aria-label="Разделы сайта"><a class="mobile-catalog-link" href="#/catalog" data-nav="catalog">Каталог</a><a href="#/catalog?view=collections">Коллекции</a><details class="mobile-catalog-departments"><summary>Мебель по назначению</summary><div><a href="#/catalog?c=ofisnaya-mebel-dlya-personala">Мебель для персонала</a><a href="#/catalog?c=mebel-v-kabinet-rukovoditelya">Кабинеты руководителей</a><a href="#/catalog?c=mebel-dlya-peregovornyh">Переговорные</a><a href="#/catalog?c=stojki-resepshn">Ресепшен</a><a href="#/catalog?c=ofisnye-divany">Зоны отдыха и ожидания</a><a href="#/catalog?c=metallicheskaya-mebel">Металлическая мебель</a><a href="#/catalog?c=mebel-dlya-ofisnoj-kuhni">Обеденная зона</a></div></details><a href="#/project" data-nav="project">Комплектация офисов</a><a href="#/planner" data-nav="planner">Планировщик офиса</a><a href="#/projects" data-nav="projects">Проекты</a><a href="#/delivery" data-nav="delivery">Доставка и сборка</a><a href="#/service" data-nav="service">Услуги и сервис</a><a href="#/about" data-nav="about">О компании</a><a href="#/showroom" data-nav="showroom">Визит в офис</a><a href="#/contacts" data-nav="contacts">Контакты</a></nav>
+      <nav aria-label="Разделы сайта"><a class="mobile-catalog-link" href="#/catalog" data-nav="catalog">Каталог</a><a href="#/catalog?view=collections">Коллекции</a><details class="mobile-catalog-departments"><summary>Мебель по назначению</summary><div data-mobile-departments></div></details><a href="#/project" data-nav="project">Комплектация офисов</a><a href="#/planner" data-nav="planner">Планировщик офиса</a><a href="#/projects" data-nav="projects">Проекты</a><a href="#/delivery" data-nav="delivery">Доставка и сборка</a><a href="#/service" data-nav="service">Услуги и сервис</a><a href="#/about" data-nav="about">О компании</a><a href="#/showroom" data-nav="showroom">Шоурум</a><a href="#/contacts" data-nav="contacts">Контакты</a></nav>
       <div class="mobile-menu-contacts"><a href="tel:+73422155898">+7 (342) 215-58-98</a><a href="mailto:grand-office159@yandex.ru">grand-office159@yandex.ru</a></div>
     </div>
   </dialog>
@@ -56,7 +55,7 @@
     <div class="shell footer-inner">
       <div><a class="logo" href="#/" aria-label="Гранд-Офис — главная"><img src="./assets/logo.svg" alt="Гранд-Офис" width="244" height="43"></a><p>Офисная мебель в Перми</p></div>
       <nav aria-label="Покупателям"><a href="#/catalog">Каталог</a><a href="#/catalog?view=collections">Все коллекции</a><a href="#/project">Комплектация офисов</a><a href="#/planner">Планировщик офиса</a><a href="#/delivery">Доставка и сборка</a><a href="#/service">Услуги и сервис</a></nav>
-      <nav aria-label="Компания"><a href="#/about">О компании</a><a href="#/projects">Проекты</a><a href="#/showroom">Визит в офис</a><a href="#/contacts">Контакты</a></nav>
+      <nav aria-label="Компания"><a href="#/about">О компании</a><a href="#/projects">Проекты</a><a href="#/showroom">Шоурум</a><a href="#/contacts">Контакты</a></nav>
       <div><a href="tel:+73422155898">+7 (342) 215-58-98</a><br><a href="mailto:grand-office159@yandex.ru">grand-office159@yandex.ru</a><br>Пермь, ул. Екатерининская, 10</div>
     </div>
     <div class="shell footer-bottom"><span>© Гранд-Офис</span><a href="https://grand-office59.ru/privacy-policy/">Политика конфиденциальности</a></div>

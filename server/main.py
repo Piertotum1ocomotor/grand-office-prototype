@@ -746,7 +746,12 @@ class SiteServer(BaseHTTPRequestHandler):
                     return self.response(200,row['file_data'],row['file_type'],{'Content-Disposition':f'attachment; filename="attachment.{ext}"'})
             raise Problem('Страница не найдена.',404)
         resource=path.strip('/')
-        allowed = resource in FILES or re.fullmatch(r'assets/[A-Za-z0-9_.-]+|data/(?:catalog|featured|collections|catalog-facts|browse/sections)\.json|data/products/[0-9]+\.json',resource)
+        allowed = resource in FILES or re.fullmatch(
+            r'assets/(?:[A-Za-z0-9_.-]+|(?:catalog|original-home)/[A-Za-z0-9_-]+\.webp)'
+            r'|data/(?:catalog|featured|collections|catalog-facts|finish-swatches|browse/sections)\.json'
+            r'|data/products/[0-9]+\.json',
+            resource,
+        )
         if allowed and resource!='index.html':
             return self.static(ROOT/resource)
         if path.startswith('/api/'):

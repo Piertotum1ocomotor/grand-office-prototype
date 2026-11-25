@@ -51,6 +51,23 @@ const needsDimensionCheck = item => catalogFacts && Object.hasOwn(catalogFacts.d
 const finishesFor = id => (catalogFacts?.productFinishes[id] || []).map(index=>catalogFacts.finishes[index]);
 const finishKey = value => normalize(value).trim().replace(/\s*\/\s*/g,'/').replace(/\s+/g,' ');
 
+let finishSwatches = {};
+let swatchColumns=0, swatchRows=0;
+let swatchRequest;
+function loadFinishSwatches() {
+  swatchRequest ??= fetch('./data/finish-swatches.json').then(response=>{
+    if (!response.ok) throw new Error('Образцы отделок недоступны');
+    return response.json();
+  }).then(({columns,rows,samples})=>{
+    if (!Number.isSafeInteger(columns) || columns<2 || !Number.isSafeInteger(rows) || rows<2 ||
+        !samples || typeof samples!=='object' || Array.isArray(samples)) throw new Error('Некорректные образцы отделок');
+    swatchColumns=columns;
+    swatchRows=rows;
+    finishSwatches=samples;
+  }).catch(()=>{swatchRequest=undefined;});
+  return swatchRequest;
+}
+
 const fromProduct = ([id, name, sku, price, max, image, categories, stock, backorder, url, type, dimensions, kind]) => (
   {id, name, sku, price, max, image, categories, stock, backorder, url, type,
     dimensions:catalogDimensions(id,dimensions),kind:catalogKind(id,kind)}
@@ -67,16 +84,66 @@ const photo = (src, alt = '', extra = '') => src ? '<img src="' + e(src) + '" al
 const dimensionPattern = /(?<!\d)\d{2,4}\s*[×xх*]\s*\d{2,4}\s*[×xх*]\s*\d{2,4}(?!\d)/i;
 const dimensionsLabel = (dims) => dims?.[0] && dims[1] ? dims.filter(Boolean).join(' × ') + ' мм' : (dims?.[0] ? 'Ширина ' + dims[0] + ' мм' : '');
 const productTitle = (name) => name.replace(dimensionPattern,'').trim().replace(/[,(–-]+$/,'').trim() || name;
-const card = (item, origin, showFinishes) => {
+function finishSample(label) {
+  const key=finishKey(label);
+  const sample=Object.hasOwn(finishSwatches,key) ? finishSwatches[key] : null;
+  if (Array.isArray(sample) && sample.length===2) {
+    const [column,row]=sample;
+    if (Number.isSafeInteger(column) && column>=0 && column<swatchColumns && Number.isSafeInteger(row) && row>=0 && row<swatchRows) {
+      const size=swatchColumns*100+'% '+swatchRows*100+'%';
+      const position=column/(swatchColumns-1)*100+'% '+row/(swatchRows-1)*100+'%';
+      return '<span class="finish-sample finish-sample-image" aria-hidden="true" style="background-size:'+size+';background-position:'+position+'"></span>';
+    }
+  }
+  return '<span class="finish-sample finish-sample-neutral" aria-hidden="true"></span>';
+}
+
+function finishSwatchButton([value,label], selected) {
+  return '<button class="finish-swatch'+(value===''?' finish-default':'')+'" type="button" data-finish-value="'+e(value)+
+    '" data-finish-label="'+e(label)+'" aria-label="'+e(label)+'" aria-pressed="'+(value===selected)+'">'+
+    (value===''?e(label):finishSample(label))+'</button>';
+}
+
+function finishSwatchList(options, selected, limit) {
+  const displayed=options.slice(0,limit);
+  const hidden=options.slice(limit);
+  if (hidden.some(([value])=>value===selected)) {
+    const index=hidden.findIndex(([value])=>value===selected);
+    [displayed[limit-1],hidden[index]]=[hidden[index],displayed[limit-1]];
+  }
+  const buttons=items=>items.map(option=>finishSwatchButton(option,selected)).join('');
+  return '<div class="finish-options">'+buttons(displayed)+(hidden.length?
+    '<details class="finish-more"><summary>Ещё '+hidden.length+'</summary><div class="finish-options">'+buttons(hidden)+'</div></details>':'')+'</div>';
+}
+
+function finishPreview(labels) {
+  if (!labels.length) return '';
+  const options=labels.map((label,index)=>[String(index),label]);
+  return '<div class="finish-field finish-preview" role="group" aria-label="Отделки">'+
+    finishSwatchList(options,null,4)+'<p class="finish-name" aria-hidden="true"></p></div>';
+}
+
+function finishField(id, title, placeholder, items, value, attributes='') {
+  const options=[['',placeholder],...items.map(([key,label])=>[String(key),label])];
+  const selected=options.find(([key])=>key===String(value)) || options[0];
+  return '<div class="finish-field" role="group" aria-labelledby="'+id+'-label"><span class="field-label" id="'+id+'-label">'+e(title)+'</span>'+
+    '<select id="'+id+'" '+attributes+' hidden>'+options.map(([key,label])=>'<option value="'+e(key)+'"'+
+    (key===selected[0]?' selected':'')+'>'+e(label)+'</option>').join('')+'</select>'+
+    finishSwatchList(options,selected[0],8)+'<p class="finish-name" aria-hidden="true">'+e(selected[0]?selected[1]:'')+'</p></div>';
+}
+
+const card = (item, origin) => {
   const title = productTitle(item.name);
   const values = [item.kind==='parts'?'Комплектующая':item.kind==='modules'?'Модуль':'',item.sku ? 'Арт. '+item.sku : '',
     dimensionsLabel(item.dimensions),needsDimensionCheck(item)?'Габариты уточняются':''].filter(Boolean);
   const link = '#/product/'+item.id+'?from='+encodeURIComponent(origin);
-  const finishes = showFinishes ? finishesFor(item.id) : [];
-  const finishLabel = finishes.slice(0,3).join(' · ')+(finishes.length>3?' +'+(finishes.length-3):'');
-  return `<article class="product"><a class="product-photo" href="${e(link)}" aria-label="${e(title)}">${photo(item.image,'','loading="lazy" width="380" height="235"')}</a><div class="product-card"><h3><a href="${e(link)}">${e(title)}</a></h3>${values.length ? '<p class="meta">'+e(values.join(' · '))+'</p>' : ''}${finishLabel?'<p class="small product-finishes" title="'+e(finishes.join(' · '))+'">Отделки: '+e(finishLabel)+'</p>':''}<p class="price">${money(item.price,item.max)}</p><p class="small">${item.backorder ? 'Под заказ' : 'Наличие уточняется'}</p></div></article>`;
+  return `<article class="product"><a class="product-photo" href="${e(link)}" aria-label="${e(title)}">${photo(item.image,'','loading="lazy" width="380" height="235"')}</a><div class="product-card"><h3><a href="${e(link)}">${e(title)}</a></h3>${values.length ? '<p class="meta">'+e(values.join(' · '))+'</p>' : ''}${finishPreview(finishesFor(item.id))}<p class="price">${money(item.price,item.max)}</p><p class="small">${item.backorder ? 'Под заказ' : 'Наличие уточняется'}</p></div></article>`;
 };
-const categoryCard = ([name, image, category]) => `<a class="category" href="#/catalog?c=${encodeURIComponent(category)}">${photo('./assets/'+image,'','loading="lazy"')}<span>${e(name)}</span></a>`;
+const departmentLink = ([, , category]) => catalogLink('',category==='chairs' ? {t:category} : {c:category});
+const categoryCard = department => {
+  const [name,image] = department;
+  return `<a class="category" href="${e(departmentLink(department))}">${photo('./assets/original-home/'+image,'','loading="lazy" width="600" height="489"')}<span>${e(name)}</span></a>`;
+};
 
 function projectShowcase(excluded) {
   return `<div class="project-carousel"><ul class="project-track" tabindex="0" aria-label="Проекты Гранд-Офиса">${site.projects.filter(project=>project.id!==excluded).map(project=>`<li><a class="project-tile" href="#/projects/${project.id}">${photo('./assets/'+project.image,project.zone,'loading="lazy" width="656" height="505"')}<div><h3>${e(project.name)}</h3><p>${e(project.zone)}</p></div></a></li>`).join('')}</ul>
@@ -126,11 +193,11 @@ function home() {
       <div class="hero-copy"><p class="eyebrow">Офисная мебель в Перми</p><h1 id="home-title">Проектируем логику пространства</h1>
       <p>Спланируем офис, подберём мебель, подготовим смету, доставим и соберём.</p>
       <div class="actions"><a class="btn" href="${officeQuote}">Запросить расчёт офиса</a><a class="btn secondary" href="#/catalog">Перейти в каталог</a></div></div>
-      <div class="hero-photo brand-photo">${photo('./assets/office.webp','Офис с деревянными столами и терракотовыми креслами','fetchpriority="high"')}</div>
+      <div class="hero-photo">${photo('./assets/original-home/hero.webp','Кабинет с деревянным столом и терракотовыми креслами','width="1536" height="1024" fetchpriority="high"')}</div>
     </section>
     <section class="section"><div class="section-head"><h2>Мебель для офиса</h2><a class="text-link" href="#/catalog">Весь каталог</a></div>
       <div class="actions home-types"><a class="chip home-collections-chip" href="#/catalog?view=collections">Все коллекции</a><a class="chip" href="#/catalog?t=tables">Столы</a><a class="chip" href="#/catalog?t=chairs">Кресла и стулья</a><a class="chip" href="#/catalog?t=cabinets">Шкафы</a><a class="chip" href="#/catalog?t=pedestals">Тумбы</a><a class="chip" href="#/catalog?t=shelving">Стеллажи</a></div>
-      <div class="category-grid four">${site.startCategories.map(categoryCard).join('')}</div></section>
+      <div class="category-grid department-tiles">${catalogDepartments.map(categoryCard).join('')}</div></section>
     <section class="project-feature kit-hero">${photo('./assets/riva-interior.webp','Пример рабочих мест с мебелью Riva в интерьере','loading="lazy" width="900" height="720"')}
       <div><p class="eyebrow">Серия Riva</p><h2>Соберите рабочие места</h2>
         <p>Выберите столы, кресла и тумбы. Посмотрите цену каждой позиции и попробуйте расставить мебель по размерам комнаты.</p>
@@ -224,11 +291,86 @@ function searchInputParts(query) {
   return {types,size,officeTable,terms:terms.filter(word=>!types.size || !/^офисн[а-я]*$/.test(word))};
 }
 
+const skuText = text => String(text || '').normalize('NFKC').trim().toLocaleLowerCase('ru')
+  .replace(/^арт(?:икул)?[.\s]+/u,'');
+const skuKey = text => foldLookalikes(skuText(text)).replace(/[\s./_\p{Dash_Punctuation}]+/gu,'');
+const skuQueryPattern = /^[\p{L}\d][\p{L}\d\s./_\p{Dash_Punctuation}]*$/u;
+const looksLikeSku = text => text.length<=120 && /\d/.test(text) && skuQueryPattern.test(text) &&
+  !searchSizePattern.test(text) && !/\p{L}{4,}\s|\s\p{L}{4,}/u.test(text);
+const modelCodePattern = /(?<![\p{L}\p{N}])[\p{L}][\p{L}\d]*(?:[./_\p{Dash_Punctuation}][\p{L}\d]+)*(?![\p{L}\p{N}])/gu;
+let skuIndex;
+let lastProductSearch;
+
+function productSkuIndex() {
+  if (skuIndex?.items===catalogItems) return skuIndex;
+  const literal = new Map(), codes = new Map();
+  function add(index,key,item) {
+    if (!index.has(key)) index.set(key,[]);
+    const items=index.get(key);
+    if (items.at(-1)!==item) items.push(item);
+  }
+  for (const item of catalogItems) {
+    if (item.sku) {
+      add(literal,skuText(item.sku),item);
+      add(codes,skuKey(item.sku),item);
+    }
+    const title = item.name.replace(searchSizePattern,' ');
+    for (const token of title.match(modelCodePattern) || []) {
+      if (/\d/.test(token) && token.length>=3 && token.length<=32) add(codes,skuKey(token),item);
+    }
+  }
+  return skuIndex={items:catalogItems,literal,codes};
+}
+
+function skuDistance(first, second, limit) {
+  if (Math.abs(first.length-second.length)>limit) return limit+1;
+  let previous = Array.from({length:second.length+1},(_,i)=>i);
+  let beforePrevious;
+  for (let i=1;i<=first.length;i++) {
+    const row=[i];
+    for (let j=1;j<=second.length;j++) {
+      row[j]=Math.min(previous[j]+1,row[j-1]+1,previous[j-1]+Number(first[i-1]!==second[j-1]));
+      if (i>1 && j>1 && first[i-1]===second[j-2] && first[i-2]===second[j-1])
+        row[j]=Math.min(row[j],beforePrevious[j-2]+1);
+    }
+    if (Math.min(...row)>limit) return limit+1;
+    beforePrevious=previous;
+    previous=row;
+  }
+  return previous.at(-1);
+}
+
+function searchBySku(text) {
+  if (!looksLikeSku(text)) return null;
+  const {literal,codes}=productSkuIndex();
+  const key=skuKey(text);
+  const exact=literal.get(text) || codes.get(key);
+  if (exact) return {items:exact,exact:true,types:new Set()};
+  const numeric=/^\d+$/.test(key);
+  if (key.length<(numeric?5:4) || key.length>32) return null;
+  const limit = key.length>=9 ? 2 : key.length>=5 ? 1 : 0;
+  const candidates=[];
+  for (const [code,items] of codes) {
+    if (numeric!==/^\d+$/.test(code)) continue;
+    const prefix = code.startsWith(key) && code.length-key.length<=4;
+    const distance = limit ? skuDistance(key,code,limit) : Infinity;
+    if (prefix || distance<=limit) candidates.push({code,items,prefix,distance});
+  }
+  candidates.sort((a,b)=>Number(b.prefix)-Number(a.prefix) || a.distance-b.distance ||
+    Math.abs(a.code.length-key.length)-Math.abs(b.code.length-key.length) || a.code.localeCompare(b.code,'ru'));
+  const items=[...new Set(candidates.flatMap(candidate=>candidate.items))];
+  return items.length ? {items,similar:true,types:new Set()} : null;
+}
+
 function searchProducts(query) {
-  const string = normalize(query).trim();
-  const exact = string ? catalogItems.filter(entry=>normalize(entry.sku).trim()===string) : [];
-  if (exact.length) return {items:exact,exact:true,types:new Set()};
-  const {types,terms,size,officeTable} = searchInputParts(string);
+  if (lastProductSearch?.query===query && lastProductSearch.index===catalogItems) return lastProductSearch.result;
+  const result=searchBySku(skuText(query)) || searchByProductName(query);
+  lastProductSearch={query,index:catalogItems,result};
+  return result;
+}
+
+function searchByProductName(query) {
+  const {types,terms,size,officeTable} = searchInputParts(normalize(query).trim());
   const keys = terms.map(word=>/^сетк(?:а|ой|у|е|и)$/.test(word)?'сетк':word);
   const items = catalogItems.filter(entry=>{
     if (types.size && !types.has(entry.type)) return false;
@@ -238,7 +380,7 @@ function searchProducts(query) {
     const searchable = searchWords(entry.name+' '+entry.sku);
     return keys.every(word=>searchable.some(token=>token.startsWith(word)));
   });
-  return {items,exact:false,types};
+  return {items,types};
 }
 
 const catalogNumber = new Intl.NumberFormat('ru-RU');
@@ -373,7 +515,8 @@ function catalogResults(settings,{selected,type,part,query,series,seriesCategory
     : sort==='down' ? (a,b)=>(b.price ?? -1)-(a.price ?? -1) : ()=>0;
   const kindOrder = {furniture:0,modules:1,parts:2};
   const order = (a,b)=>kindOrder[a.kind]-kindOrder[b.kind] || byPrice(a,b);
-  return [...known.sort(order),...missing.sort(order)];
+  const results=[...known.sort(order),...missing.sort(order)];
+  return search.similar ? results.slice(0,16) : results;
 }
 
 function catalogRangeFields(range) {
@@ -408,15 +551,30 @@ function collectionNavigation(category) {
 }
 
 const catalogDepartments = [
-  ['Мебель для персонала','ofisnaya-mebel-dlya-personala','2025/11/mebel-dlya-sotrudnikov-600x487.jpg'],
-  ['Кабинеты руководителей','mebel-v-kabinet-rukovoditelya','2025/11/mebel-dlya-rukovoditelej-600x488.jpg'],
-  ['Переговорные','mebel-dlya-peregovornyh','2026/01/mebel-dlya-peregovornyh-600x489.jpg'],
-  ['Ресепшен','stojki-resepshn','2026/01/mebel-dlya-priemnoy-600x489.jpg'],
-  ['Кресла и стулья','chairs','2025/11/kresla-600x489.jpg'],
-  ['Зоны отдыха и ожидания','ofisnye-divany','2025/11/zony-otdyha-i-ozhidaniya-600x489.jpg'],
-  ['Металлическая мебель','metallicheskaya-mebel','2025/11/metallicheskaya-mebel-i-sejfy-600x488.jpg'],
-  ['Обеденная зона','mebel-dlya-ofisnoj-kuhni','2025/11/obedennaya-zona-600x489.jpg']
+  ['Мебель для руководителей','executive.webp','mebel-v-kabinet-rukovoditelya'],
+  ['Мебель для сотрудников','staff.webp','ofisnaya-mebel-dlya-personala'],
+  ['Кресла и стулья','chairs.webp','chairs'],
+  ['Мебель для приёмной','reception.webp','stojki-resepshn'],
+  ['Мебель для переговорных','meeting.webp','mebel-dlya-peregovornyh'],
+  ['Зоны отдыха и ожидания','lounge.webp','ofisnye-divany'],
+  ['Металлическая мебель и сейфы','metal.webp','metallicheskaya-mebel'],
+  ['Специализированная мебель','special.webp','promyshlennaya-mebel'],
+  ['Обеденная зона','dining.webp','mebel-dlya-ofisnoj-kuhni']
 ];
+
+const specialDepartment='promyshlennaya-mebel';
+const specialCategories=['mebel-dlya-dispetcherskih','mebel-dlya-gostinicz-i-otelej'];
+const chairDepartmentCategories=['kresla-dlya-rukovoditelya','kresla-dlya-personala','ofisnye-stulya','konferencz-kresla','mnogomestnye-sekczii-stulev','igrovye-kresla'];
+
+function departmentSubcategories(slug) {
+  if (slug==='chairs') return chairDepartmentCategories.map(selectedCategory).filter(Boolean);
+  if (slug===specialDepartment) return specialCategories.map(selectedCategory).filter(Boolean);
+  const category = selectedCategory(slug);
+  const classes = collectionScope(category)?.groups.filter(group=>group.id!==category?.id).map(group=>catById.get(group.id)) || [];
+  const children = (catChildren.get(category?.id) || []).filter(entry=>!entry.empty && !classes.includes(entry));
+  if (slug==='metallicheskaya-mebel' && catBySlug.has('sejfy')) children.push(catBySlug.get('sejfy'));
+  return [...classes,...children];
+}
 
 function showDepartmentIndex(settings) {
   return !['c','view','q','t','p','sort',...filterFields].some(key=>settings.get(key));
@@ -427,15 +585,18 @@ function catalogDepartmentsPage() {
     '<div class="catalog-entry-label"><h2>Коллекции</h2><p>Столы, тумбы и шкафы одной серии.</p><span class="text-link">Смотреть коллекции</span></div>'+
     '<figure class="catalog-entry-cover brand-photo">'+photo('./assets/riva-interior.webp','','width="900" height="720"')+'</figure></a>';
   const types = Object.entries(productTypes).map(([type,[name]])=>
-    '<a class="catalog-browse-card catalog-entry-card" href="'+e(catalogLink('',{t:type}))+'">'+
-    '<div class="catalog-entry-label"><h2>'+e(name)+'</h2></div>'+
-    '<div class="catalog-entry-image">'+photo('./assets/catalog/'+type+'.webp','','decoding="async"')+'</div></a>').join('');
-  return page('Каталог','<nav class="catalog-entry-grid" aria-label="Каталог мебели">'+collections+types+'</nav>');
+    '<a class="chip" href="'+e(catalogLink('',{t:type}))+'">'+e(type==='chairs'?'Кресла и стулья':name)+'</a>').join('');
+  return page('Каталог',collections+
+    '<section class="catalog-entry-types" aria-labelledby="catalog-types-title"><div class="section-head"><h2 id="catalog-types-title">Тип мебели</h2>'+
+    '<a class="text-link" href="#/catalog?view=products">Все товары</a></div><nav class="quick-categories" aria-label="Тип мебели">'+types+'</nav></section>'+
+    '<section class="catalog-entry-departments" aria-labelledby="departments-title">'+
+    '<h2 id="departments-title">Мебель по назначению</h2><div class="category-grid department-tiles">'+catalogDepartments.map(categoryCard).join('')+'</div></section>');
 }
 
 const lookalikeLetters = [...'авсенкмортху'];
-const collectionSearchKey = value => normalize(value).replace(/[авсенкмортху]/g,char=>
-  'abcehkmoptxy'[lookalikeLetters.indexOf(char)]).replace(/[^\p{L}\p{N}]+/gu,' ').trim();
+const foldLookalikes = text => text.replace(/[авсенкмортху]/g,char=>
+  'abcehkmoptxy'[lookalikeLetters.indexOf(char)]);
+const collectionSearchKey = value => foldLookalikes(normalize(value)).replace(/[^\p{L}\p{N}]+/gu,' ').trim();
 const collectionPrefix = /^(?:офисная мебель|мебель для персонала|кабинеты? руководителя|мебель для гостиниц(?: и отелей)?|офисные перегородки|столы для переговоров|стойк[аи] ресепше?н)\s+/i;
 function collectionNameRank(category, query) {
   const name = (category.searchName || category.name).replace(collectionPrefix,'');
@@ -518,17 +679,15 @@ function collectionCard(entry, department, parts, settings) {
   const caption = entry.count ? 'Товаров: '+catalogNumber.format(entry.count) : 'Товары уточняются';
   const finishes=(catalogFacts?.collectionFinishes[entry.id] || []).map(index=>catalogFacts.finishes[index]);
   const href=catalogLink(getRoute(collectionMatchLink(category,parts)).args,{back:catalogLink(catalogSourceSettings(settings)),backy:0});
-  return '<a class="collection-tile" data-collection-result href="'+e(href)+'">'+image+
+  return '<article class="collection-tile"><a class="collection-tile-link" data-collection-result href="'+e(href)+'">'+image+
     '<div><h3>'+e(category.name.replace(collectionPrefix,''))+'</h3>'+
     (department?'<p class="collection-department">'+e(department)+'</p>':'')+
-    '<p class="small">'+e(caption)+'</p>'+
-    (finishes.length?'<p class="small collection-finishes">Отделки: '+e(finishes.slice(0,3).join(', '))+(finishes.length>3?' и ещё '+(finishes.length-3):'')+'</p>':'')+'</div></a>';
+    '<p class="small">'+e(caption)+'</p></div></a>'+finishPreview(finishes)+'</article>';
 }
 
 function collectionOverview(settings, selected) {
   const section = collectionScope(selected);
   const tier = section?.groups.find(group=>group.id===selected?.id && group.id!==section.id);
-  const department = section && settings.get('view')!=='collections';
   const title = tier ? selected.name : section?.name || 'Коллекции';
   const query = (settings.get('cq') || '').trim().slice(0,100);
   const pick = settings.get('pick');
@@ -541,11 +700,20 @@ function collectionOverview(settings, selected) {
   const toOverview = patch=>catalogLink(settings,patch);
   const chip = (label,href,active)=>'<a class="chip" href="'+e(href)+'"'+
     (active?' aria-current="page"':'')+'>'+e(label)+'</a>';
-  const segmentTabs = chip('Все назначения',toOverview({c:null,view:'collections',cp:null}),!section)+collectionSections.map(entry=>
-    chip(entry.name,toOverview({c:catById.get(entry.id).slug,view:'collections',cp:null}),entry===section)).join('');
-  const classTabs = section?.groups.length>1 ? '<nav class="quick-categories collection-classes" aria-label="Класс мебели">'+
-    chip('Все классы',toOverview({c:catById.get(section.id).slug,cp:null}),!tier)+section.groups.map(group=>
-      chip(group.label,toOverview({c:catById.get(group.id).slug,cp:null}),group===tier)).join('')+'</nav>' : '';
+  const browseNav = !section ? '<nav class="quick-categories catalog-collection-segments" aria-label="Назначение">'+
+    collectionSections.map(entry=>chip(entry.name,toOverview({c:catById.get(entry.id).slug,view:'collections',cp:null}))).join('')+'</nav>' : '';
+  const classCards = section?.groups.length>1 ? '<section class="department-classes" aria-labelledby="department-classes-title">'+
+    '<div class="section-head"><h2 id="department-classes-title">Классы мебели</h2>'+
+    (tier?'<a class="text-link" href="'+e(toOverview({c:catById.get(section.id).slug,cp:null}))+'">Все классы</a>':'')+'</div>'+
+    '<nav class="catalog-class-grid collection-classes" aria-label="Класс мебели">'+section.groups.map(group=>{
+      const href=toOverview({c:catById.get(group.id).slug,cp:null});
+      const cover=group.items.find(item=>item.cover)?.cover;
+      return '<a class="catalog-class-choice" href="'+e(href)+'"'+(group===tier?' aria-current="page"':'')+'>'+
+        (cover?photo(site.original+'/wp-content/uploads/'+cover,'','loading="lazy" width="300" height="225"'):'')+
+        '<span>'+e(group.label)+'</span></a>';
+    }).join('')+'</nav></section>' : '';
+  const products = section ? '<a class="btn department-products" href="'+
+    e(catalogLink('',{c:selected.slug,view:'products'}))+'">'+(tier?'Смотреть товары класса':'Все товары раздела')+'</a>' : '';
   const sections = '<div class="collection-grid">'+visible.map(({item,section:result,group})=>
     collectionCard(item,[!section?result.name:'',!tier?group.label:''].filter(Boolean).join(' · '),parts,settings)).join('')+'</div>';
   const pagination = pages>1 ? '<nav class="pagination" aria-label="Страницы коллекций">'+
@@ -553,15 +721,16 @@ function collectionOverview(settings, selected) {
     '<span>Страница '+catalogNumber.format(current)+' из '+catalogNumber.format(pages)+'</span>'+
     (current<pages?'<a class="btn secondary" href="'+e(toOverview({cp:current+1}))+'">Далее</a>':'')+'</nav>' : '';
   const levels = [['Каталог','#/catalog']];
-  if (section && !department) levels.push(['Коллекции',collectionNavigation()]);
-  if (tier) levels.push([section.name,catalogLink('',{c:catById.get(section.id).slug,view:settings.get('view')})]);
-  const browseNav = '<nav class="quick-categories catalog-collection-segments" aria-label="Назначение">'+segmentTabs+'</nav>';
-  return page(title,'<div class="collection-tools"><form id="collection-search" role="search" aria-label="Поиск коллекции">'+
+  if (section && settings.get('view')==='collections') levels.push(['Коллекции',collectionNavigation()]);
+  if (tier) levels.push([section.name,toOverview({c:catById.get(section.id).slug,cp:null})]);
+  const searchForm = '<form id="collection-search" role="search" aria-label="Поиск коллекции">'+
     '<label class="sr-only" for="collection-query">Название коллекции</label><input class="field" type="search" id="collection-query" name="cq" value="'+
-    e(query)+'" maxlength="100" placeholder="Название коллекции"><button class="btn secondary" type="submit">Найти</button></form>'+
-    '<details class="collection-browse-filters" open><summary>Назначение и класс'+(section?' · '+e(tier?.label || section.name):'')+'</summary><div>'+browseNav+classTabs+'</div></details></div>'+
-    (rows.length?'<p class="count-label">Коллекций: '+catalogNumber.format(rows.length)+'</p>'+sections+pagination :
-      '<p class="empty">'+(query?'Коллекции с таким названием не найдены. <a class="text-link" href="'+e(toOverview({cq:null,cp:null}))+'">Сбросить поиск</a>':'В этом разделе пока нет коллекций.')+'</p>'),levels);
+    e(query)+'" maxlength="100" placeholder="Название коллекции"><button class="btn secondary" type="submit">Найти</button></form>';
+  return page(title,classCards+'<div class="collection-tools'+(section?' department-tools':'')+'">'+
+    products+searchForm+browseNav+'</div>'+
+    (rows.length?(section?'<div class="department-collections-head"><h2>Коллекции</h2><p class="count-label">Коллекций: '+catalogNumber.format(rows.length)+'</p></div>':
+      '<p class="count-label">Коллекций: '+catalogNumber.format(rows.length)+'</p>')+sections+pagination :
+      '<p class="empty">'+(query?'Коллекции с таким названием не найдены. <a class="text-link" href="'+e(toOverview({cq:null,cp:null,pick:null}))+'">Сбросить поиск</a>':'В этом разделе пока нет коллекций.')+'</p>'),levels);
 }
 
 function collectionChoices(type, selected) {
@@ -705,9 +874,7 @@ function catalogFinishControl(collection, finish) {
   const options = (catalogFacts.collectionFinishes[collection?.id] || []).map(index=>catalogFacts.finishes[index]);
   if (!options.length && !finish) return '';
   if (finish && !options.includes(finish)) options.unshift(finish);
-  return '<label class="catalog-finish"><span class="field-label">Отделка</span><select class="field" id="catalog-finish">'+
-    '<option value="">Все отделки</option>'+options.map(label=>'<option value="'+e(label)+'"'+(label===finish?' selected':'')+'>'+e(label)+'</option>').join('')+
-    '</select></label>';
+  return '<div class="catalog-finish">'+finishField('catalog-finish','Отделка','Все отделки',options.map(label=>[label,label]),finish)+'</div>';
 }
 
 function catalogPage(settings, preview, unavailable) {
@@ -727,12 +894,18 @@ function catalogPage(settings, preview, unavailable) {
   const dimensions=dimensionBounds.filter(hasBounds);
   const includeUnknown = settings.get('unknown')==='1';
   const selected = selectedCategory(c);
+  if (selected?.slug===specialDepartment && selected.empty && !['q','t','p','sort',...filterFields].some(key=>settings.get(key))) {
+    const links = departmentSubcategories(specialDepartment).map(entry=>'<a class="chip" href="'+e(catalogLink('',{c:entry.slug}))+'">'+e(entry.name)+'</a>');
+    return page('Специализированная мебель','<div class="quick-categories">'+links.join('')+'</div>'+
+      '<p class="intro">Поможем подобрать промышленную мебель под задачу и условия работы.</p><a class="btn" href="'+officeQuote+'">Запросить подбор мебели</a>',[['Каталог','#/catalog']]);
+  }
   if (showCollections(settings,selected)) return collectionOverview(settings,selected);
   const seriesCategory = selectedSeries(series);
   const collection = seriesCategory || collectionCategory(selected);
   const chairSeries = chairSeriesByKey.get(settings.get('chairSeries'));
   const resultOptions = {selected,type,part,query,series,seriesCategory,chairSeries,purpose,shape,ranges};
   const matches = preview ? preview.rows.map(fromBrowse) : catalogResults(settings,resultOptions);
+  const similar = query && !preview && searchProducts(query).similar;
   const count = preview?.count ?? matches.length;
   const totalPages = Math.max(1,Math.ceil(count/pageSize));
   const offset = catalogPageNumber(settings,totalPages);
@@ -789,7 +962,7 @@ function catalogPage(settings, preview, unavailable) {
   const grid = groups.filter(([,rows])=>rows.length).map(([heading,rows])=>'<section class="catalog-group">'+
     (heading?'<h2>'+heading+'</h2>':'')+
     (heading===incompleteTitle?'<p class="small">Размеры этих товаров нужно уточнить перед заказом.</p>':'')+
-    '<div class="product-grid catalog-grid">'+rows.map(item=>card(item,toCatalog(),collection||seriesCategory)).join('')+'</div></section>').join('');
+    '<div class="product-grid catalog-grid">'+rows.map(item=>card(item,toCatalog())).join('')+'</div></section>').join('');
   const cleared=toCatalog({...Object.fromEntries(filterFields.map(key=>[key,null])),p:null,changedfinish:null,
     ...(seriesCategory?{series:seriesCategory.slug}:{}),view:selected ? settings.get('view') : 'products'});
   const filterCount=chips.filter(([key])=>filterFields.includes(key)).length+(collection && finish?1:0);
@@ -865,7 +1038,10 @@ function catalogPage(settings, preview, unavailable) {
     '<a class="text-link" data-catalog-return="'+e(Number(settings.get('backy')) || 0)+'" href="'+e(source || collectionNavigation())+'">'+e(returnLabel)+'</a></nav>' : '';
   const notice = settings.get('changedfinish') ? '<p class="catalog-notice">Отделка «'+e(settings.get('changedfinish'))+'» недоступна в выбранной коллекции. Показаны все отделки.</p>' : '';
   const childContext=childCategory ? '<p class="small catalog-subsection-context">Подраздел: '+e(childCategory.name)+'</p>' : '';
-  const catalogTools = collectionLinks+
+  const selectedDepartment = !collection && collectionScope(selected);
+  const browseCollections = selectedDepartment ? '<p class="catalog-related"><a class="text-link" href="'+
+    e(catalogLink('',{c:selected.slug}))+'">'+(selectedDepartment.id===selected.id?'Коллекции раздела':'Коллекции класса')+'</a></p>' : '';
+  const catalogTools = collectionLinks+browseCollections+
     '<div class="catalog-type-tabs">'+catalogFinishControl(collection,finish)+typeTabs+'</div>'+childContext+notice+
     (!collection && sections?'<details class="catalog-subsection-toggle"><summary>Подразделы</summary>'+sections+'</details>':'')+
     (!collection && queryCollections?'<p class="catalog-related"><a class="text-link" href="'+e(collectionsLink)+'">Коллекции по запросу</a></p>':'');
@@ -882,7 +1058,8 @@ function catalogPage(settings, preview, unavailable) {
       e(toCatalog({[key]:null,p:null,view:selected ? settings.get('view') : 'products',
         ...(dimensionFields.includes(key) && !dimensionFields.some(other=>other!==key&&settings.has(other))?{unknown:null}:{})}))+'">'+e(label)+' <span aria-hidden="true">×</span></a>').join('')+'</div>':'')+
     '</div><div class="catalog-heading"><p class="count-label">Найдено: '+catalogNumber.format(count)+'</p>'+sortControl+
-    '</div>'+ (grid || empty)+pagination+'</div></div>',levels);
+    '</div>'+ (similar && count?'<p class="catalog-notice sku-similar">Точного совпадения нет. Показаны похожие артикулы.</p>':'')+
+    (grid || empty)+pagination+'</div></div>',levels);
 }
 
 function logistics(item) {
@@ -942,6 +1119,14 @@ function itemPage(item, detail, variant, origin, choice) {
   const finishes = finishesFor(item.id);
   const finish = selected ? finishes.find(value=>finishKey(value)===finishKey(selected[1])) : !opts.length && finishes[0];
   const finishLink = collection && finish ? catalogLink('',{c:collection.slug,finish}) : '';
+  const hasColorVariants=opts.length && (finishes.length || specs.some(([label])=>/^(?:цвет(?: изделия)?|отделка)$/i.test(label.trim())) ||
+    opts.every(([,label])=>Object.hasOwn(finishSwatches,finishKey(label))));
+  const finishOptions=opts.map(([id,label])=>[id,label || 'Вариант '+id]);
+  const optionField=hasColorVariants ? finishField('product-option','Отделка','Выберите вариант',finishOptions,selected?.[0],'data-id="'+item.id+'"') :
+    opts.length ? '<label><span class="field-label">Вариант</span><select class="field" id="product-option" data-id="'+item.id+'" '+
+      (selected?'':'aria-describedby="variant-help"')+'><option value="">Выберите вариант</option>'+
+      finishOptions.map(([id,label])=>'<option value="'+id+'" '+(id===selected?.[0]?'selected':'')+'>'+e(label)+'</option>').join('')+'</select></label>' :
+      finishPreview(finishes);
   const levels = [['Каталог','#/catalog']];
   if (collection) levels.push([collection.name,collectionNavigation(collection)]);
   const returnLink = from && from!=='#/catalog' && from!==(collection && collectionNavigation(collection))
@@ -952,8 +1137,8 @@ function itemPage(item, detail, variant, origin, choice) {
       ${pics.length>1 ? '<div class="gallery-thumbs">'+pics.slice(0,8).map((src,i)=>`<button type="button" data-photo="${e(src)}" data-variant-photo="${src===matchingPhoto}" aria-label="Фотография ${i+1}">${photo(src,'','loading="lazy"')}</button>`).join('')+'</div>':''}</section>
       <section class="product-info">
       <p class="product-price">${selected?(priceOf(item,selected,variant)==null ? '<span class="small">Цена варианта уточняется</span>' : money(priceOf(item,selected,variant))):money(item.price,item.max)}</p>
-      ${opts.length? `<label><span class="field-label">Вариант</span><select class="field" id="product-option" data-id="${item.id}" ${selected?'':'aria-describedby="variant-help"'}><option value="">Выберите вариант</option>${opts.map((o)=>`<option value="${o[0]}" ${o===selected?'selected':''}>${e(o[1] || ('Вариант ' + o[0]))}</option>`).join('')}</select></label>
-      ${selected?'':'<p class="small" id="variant-help">Выберите вариант, чтобы добавить товар в корзину.</p>'}`:''}
+      ${optionField}
+      ${opts.length && !selected?'<p class="small" id="variant-help">Выберите вариант, чтобы добавить товар в корзину.</p>':''}
       <p class="small" id="variant-status" role="status" hidden></p>
       <div class="actions"><button class="btn" data-add="${item.id}" ${(opts.length && !selected) || liveStock===0?'disabled':''}>В корзину</button><a class="btn secondary" data-item-quote href="#/project?${context}">Запросить расчёт</a></div><p class="result" id="cart-result" role="status" hidden></p>
       ${finishLink?'<p class="product-finish-link"><a class="text-link" href="'+e(finishLink)+'">Мебель этой коллекции в такой же отделке</a></p>':''}
@@ -1128,13 +1313,12 @@ function kitFinishes(qty) {
 
 function kitFinishFields(qty) {
   const finishes=kitFinishes(qty);
+  const activeFinish=finishes.find(label=>finishKey(label)===finishKey(kitPreferences.finish));
   const chair=kitSelection(qty).find(item=>item.group.id==='chair');
   const options=productDetails.get(chair?.id)?.[2] || [];
-  return '<div class="form-two"><label><span class="field-label">Отделка столов и тумб</span><select class="field" id="kit-finish">'+
-    '<option value="">Подобрать с менеджером</option>'+finishes.map(label=>'<option value="'+e(label)+'" '+
-      (finishKey(label)===finishKey(kitPreferences.finish)?'selected':'')+'>'+e(label)+'</option>').join('')+'</select></label>'+
-    (options.length?'<label><span class="field-label">Цвет кресла</span><select class="field" id="kit-chair-choice"><option value="">Подобрать с менеджером</option>'+
-      options.map(option=>'<option value="'+option[0]+'" '+(chair.choice===option[0]?'selected':'')+'>'+e(option[1])+'</option>').join('')+'</select></label>':'')+
+  return '<div class="form-two kit-finish-fields">'+
+    (finishes.length?finishField('kit-finish','Отделка столов и тумб','Подобрать с менеджером',finishes.map(label=>[label,label]),activeFinish):'')+
+    (options.length?finishField('kit-chair-choice','Цвет кресла','Подобрать с менеджером',options,chair.choice):'')+
     '</div>'+(finishes.length?'':'<p class="small">У выбранных моделей нет общей отделки. Измените модель или оставьте подбор менеджеру.</p>');
 }
 
@@ -1416,9 +1600,23 @@ function contactsPage(showroom) {
   const mapParams = new URLSearchParams({oid:mapId,ol:'biz',z:'16'});
   if (contacts?.coordinates) mapParams.set('ll',contacts.coordinates.join(','));
   const mapFrame = 'https://yandex.ru/map-widget/v1/?'+mapParams;
-  if (showroom) return page('Визит в офис',`<p class="intro">Позвоните перед визитом и сообщите артикул изделия или название серии. Менеджер подтвердит время встречи и подскажет, какую мебель или образцы отделки можно посмотреть.</p>
-    <section class="contacts-grid entrance-grid">${photo('./assets/company.webp','Вход и вывеска Гранд-Офис на Екатерининской улице','width="1158" height="850"')}
-      <div class="panel"><h2>Куда приехать</h2><p>${e(address)}. Вход под вывеской «Гранд-Офис».</p>${hours?'<p><strong>'+e(hours)+'</strong></p>':''}<p>Если вы планируете комплектацию, захватите план помещения, размеры и желаемую дату переезда. Дизайн-проект можно обсудить и составить вместе с менеджером в шоуруме.</p><div class="actions"><a class="btn" href="tel:+73422155898">Согласовать визит</a><a class="text-link" href="${mapLink}">График и маршрут на Яндекс Картах</a></div></div></section>`,[['Контакты','#/contacts']]);
+  if (showroom) {
+    const directions = contacts?.coordinates ?
+      'https://yandex.ru/maps/?'+new URLSearchParams({rtext:'~'+[...contacts.coordinates].reverse().join(',')}) : mapLink;
+    return page('Шоурум',`<p class="intro">Приезжайте обсудить планировку офиса, модели и материалы. Если хотите посмотреть конкретную мебель или образец отделки, заранее назовите менеджеру серию или артикул.</p>
+      <section class="contacts-grid showroom-visit" aria-labelledby="showroom-visit-title"><div class="panel"><h2 id="showroom-visit-title">Спланируйте визит</h2>
+        <dl class="contact-details"><div><dt>Адрес</dt><dd>${e(address)}</dd></div>
+        ${hours?'<div><dt>График</dt><dd>'+e(hours)+'</dd></div>':''}${contacts?.stop?'<div><dt>Ближайшая остановка</dt><dd>'+e(contacts.stop)+'</dd></div>':''}</dl>
+        <p>Вход под вывеской «Гранд-Офис». Для обсуждения проекта возьмите план помещения с размерами и уточните число рабочих мест и дату переезда.</p>
+        <div class="actions"><a class="btn" href="tel:+73422155898">Позвонить</a><a class="btn secondary" href="${e(directions)}">Построить маршрут</a></div></div>
+        <figure class="showroom-photo">${photo('./assets/company.webp','Фасад Гранд-Офиса на Екатерининской улице','width="1158" height="850"')}<figcaption>Офис «Гранд-Офис» на Екатерининской, 10</figcaption></figure></section>
+      <section class="section" aria-labelledby="showroom-map-title"><div class="section-head"><h2 id="showroom-map-title">Как найти вход</h2>
+        <a class="text-link" href="${e(mapLink)}">Карточка на Яндекс Картах</a></div>
+        <div class="showroom-directions"><div class="contact-map"><iframe title="Яндекс Карта — Гранд-Офис на Екатерининской, 10" src="${e(mapFrame)}" loading="lazy" allowfullscreen></iframe></div>
+        <div class="showroom-approach"><figure class="showroom-photo">${photo('./assets/original-home/showroom-map-1.webp','Подход к зданию по Екатерининской улице','loading="lazy" width="960" height="720"')}<figcaption>Подход со стороны Екатерининской</figcaption></figure>
+        <figure class="showroom-photo">${photo('./assets/original-home/showroom-map-2.webp','Вход в Гранд-Офис крупным планом','loading="lazy" width="960" height="720"')}<figcaption>Вход в офис</figcaption></figure>
+        <p class="small">Фото входа и подхода · <a class="text-link" href="${e(mapLink)}">Яндекс Карты</a></p></div></div></section>`,[['Контакты','#/contacts']]);
+  }
   return page('Контакты',`<p class="intro">Свяжитесь с нами, чтобы подобрать мебель, рассчитать поставку или уточнить условия по заказу.</p>
     <section class="contacts-grid"><div class="panel"><h2>Офис в Перми</h2><dl class="contact-details">
     <div><dt>Адрес</dt><dd>${e(address)}</dd></div><div><dt>Телефон</dt><dd><a class="text-link" href="tel:+73422155898">${site.phone}</a></dd></div><div><dt>Почта</dt><dd><a class="text-link" href="mailto:${site.email}">${site.email}</a></dd></div>
@@ -1494,7 +1692,7 @@ function hrefFor(address) {
         const levels=[];
         for (let entry=chosen; entry?.slug && levels.length<12; entry=catById.get(entry.parent)) levels.unshift(encodeURIComponent(entry.slug));
         path=chosen.path || '/product-category/'+levels.join('/')+'/';
-      } else if (site.startCategories.some(([, , slug])=>slug===category)) {
+      } else if (catalogDepartments.some(([, , slug])=>slug===category)) {
         path='/product-category/'+encodeURIComponent(category)+'/';
       } else {
         path='/catalog/'+encodeURIComponent(category)+'/';
@@ -1674,6 +1872,7 @@ async function render(move = false, catalogScroll) {
   main.inert=true;
   main.setAttribute('aria-busy','true');
   const {key,id,args} = getRoute();
+  const swatches=['catalog','product','project'].includes(key) && loadFinishSwatches();
   const product = Number(id);
   const target = Number(args.get('product'));
   const example = key==='project' ? site.projects.find(item=>item.id===args.get('case')) : null;
@@ -1724,6 +1923,7 @@ async function render(move = false, catalogScroll) {
     productChoice=productChoiceFor(product,args,details?.[2] || []);
     if (details?.[2]?.some(item=>item[0]===productChoice)) variant = await site.variation(product,productChoice);
   } else await loadConfig;
+  if (swatches) await swatches;
   if (current!==revision) return;
   main.inert=false;
   main.removeAttribute('aria-busy');
@@ -1768,6 +1968,7 @@ async function render(move = false, catalogScroll) {
   if (pathRouting) {
     prepareLinks(document.querySelector('.site-header'));
     prepareLinks(document.querySelector('#mobile-menu'));
+    prepareLinks(document.querySelector('.footer'));
     document.querySelector('.skip').href=location.pathname+location.search+'#main';
     const canonical=document.querySelector('link[rel="canonical"]');
     if (canonical && key!=='missing') {
@@ -1838,6 +2039,28 @@ function rememberCollectionSource(anchor) {
   if (pathRouting) {anchor.dataset.route=route;anchor.href=hrefFor(route);}
   else anchor.href=route;
 }
+function showFinishName(field, button) {
+  field.querySelector('.finish-name').textContent=button?.dataset.finishValue ? button.dataset.finishLabel : '';
+}
+function resetFinishName(field) {
+  showFinishName(field,field.querySelector('[data-finish-value][aria-pressed="true"]'));
+}
+main.addEventListener('mouseover',event=>{
+  const button=event.target.closest('[data-finish-value]');
+  if (button) showFinishName(button.closest('.finish-field'),button);
+});
+main.addEventListener('mouseout',event=>{
+  const button=event.target.closest('[data-finish-value]');
+  if (button && !button.contains(event.relatedTarget)) resetFinishName(button.closest('.finish-field'));
+});
+main.addEventListener('focusin',event=>{
+  const button=event.target.closest('[data-finish-value]');
+  if (button) showFinishName(button.closest('.finish-field'),button);
+});
+main.addEventListener('focusout',event=>{
+  const button=event.target.closest('[data-finish-value]');
+  if (button) resetFinishName(button.closest('.finish-field'));
+});
 main.addEventListener('pointerdown',event=>rememberCollectionSource(event.target.closest('a')));
 main.addEventListener('keydown',event=>{if(event.key==='Enter') rememberCollectionSource(event.target.closest('a'));});
 main.addEventListener('click', async (event)=>{
@@ -1875,6 +2098,18 @@ main.addEventListener('click', async (event)=>{
   }
   const control=event.target.closest('button');
   if (!control) return;
+  if (control.hasAttribute('data-finish-value')) {
+    const field=control.closest('.finish-field');
+    const select=field.querySelector('select');
+    field.querySelector('[aria-pressed="true"]')?.setAttribute('aria-pressed','false');
+    control.setAttribute('aria-pressed','true');
+    showFinishName(field,control);
+    if (select && select.value!==control.dataset.finishValue) {
+      select.value=control.dataset.finishValue;
+      select.dispatchEvent(new Event('change',{bubbles:true}));
+    }
+    return;
+  }
   const {photo, add, remove, scroll} = control.dataset;
   if (control.dataset.cartStep) {
     const input = control.closest('.cart-stepper').querySelector('[data-qty]');
@@ -1962,7 +2197,8 @@ main.addEventListener('change',event=>{
   if (element.id==='catalog-sort' || element.id==='catalog-finish') {
     const key = element.id==='catalog-sort' ? 'sort' : 'finish';
     const address=catalogLink(catalogSettings(getRoute().args),{[key]:element.value,p:null,...(key==='finish'?{changedfinish:null}:{})});
-    captureCatalogScroll(address,key==='sort'?'.catalog-heading':'.catalog-type-tabs','#'+element.id);
+    captureCatalogScroll(address,key==='sort'?'.catalog-heading':'.catalog-type-tabs',
+      key==='sort'?'#catalog-sort':'.catalog-finish [aria-pressed="true"]');
     navigate(address);
   }
   if (element.id==='set-count') {
@@ -2006,7 +2242,11 @@ main.addEventListener('change',event=>{
       prepareLinks(quote.parentElement);
     }
     if (status && choice) {status.hidden=false;status.textContent='Загружаем фото и цену варианта…';}
-    render().then(()=>document.querySelector('#product-option')?.focus({preventScroll:true}));
+    render().then(()=>{
+      const select=document.querySelector('#product-option');
+      const focus=select?.hidden ? select.closest('.finish-field').querySelector('[aria-pressed="true"]') : select;
+      focus?.focus({preventScroll:true});
+    });
   }
   if ('qty' in element.dataset) updateCartQuantity(element,element.valueAsNumber);
 });
@@ -2232,18 +2472,25 @@ searchSuggestions.addEventListener('click',event=>{
 document.querySelector('#global-search').addEventListener('submit',async event=>{
   event.preventDefault();
   const value = searchInput.value.trim();
-  if (collectionSearchKey(value).length>=2) {
-    try {await Promise.all([loadCollectionDirectory(),loadCatalogFacts().catch(()=>null)]);}
-    catch {navigate(catalogLink('',{view:'collections',cq:value}));return;}
-  }
+  const productRoute = catalogLink('',{q:value,view:'products'});
+  const code = looksLikeSku(skuText(value));
+  let productMatch;
+  try {
+    const tasks = [];
+    if (collectionSearchKey(value).length>=2) tasks.push(loadCollectionDirectory(),loadCatalogFacts().catch(()=>null));
+    if (code) tasks.push(loadCatalogFacts().then(()=>loadCatalog(new URLSearchParams({q:value})))
+      .then(()=>{if (catalogItems) productMatch=searchBySku(skuText(value));}));
+    await Promise.allSettled(tasks);
+  } catch {}
   if (value!==searchInput.value.trim()) return;
+  hideSearchSuggestions();
   const search = collectionSearch(value);
   const exact = search.matches.filter(row=>row.rank===3);
+  if (productMatch?.exact || productMatch?.similar && !exact.length) return navigate(productRoute);
   const candidates = exact.length ? exact : search.matches;
-  hideSearchSuggestions();
   if (candidates.length===1) navigate(collectionMatchLink(catById.get(candidates[0].item.id),search.intent?search.parts:null));
   else if (candidates.length>1) navigate(collectionSearchLink(search));
-  else navigate(catalogLink('',{q:value,view:'products'}));
+  else navigate(productRoute);
 });
 const dialog=document.querySelector('#city-dialog');
 const cityInput=document.querySelector('#city-input');
@@ -2262,13 +2509,59 @@ saveCart();
 const catalogMenu=document.querySelector('.catalog-menu');
 const catalogTrigger=document.querySelector('#catalog-trigger');
 const catalogPanel=document.querySelector('#header-catalog');
-const catalogToggle=document.querySelector('.catalog-toggle');
-const hoverCatalog=matchMedia('(hover: hover) and (pointer: fine)');
+const catalogMenuDepartments=catalogPanel.querySelector('[data-menu-departments]');
+const mobileDepartments=document.querySelector('[data-mobile-departments]');
+let menuDepartmentsReady=false;
 const mobileMenu=document.querySelector('#mobile-menu');
 const mobileMenuTrigger=document.querySelector('.mobile-menu-trigger');
 const mobileNavigation=matchMedia('(max-width: 720px)');
+catalogMenuDepartments.insertAdjacentHTML('beforeend',catalogDepartments.map(department=>
+  '<div class="catalog-department-menu-row"><a href="'+e(departmentLink(department))+'">'+e(department[0])+'</a></div>').join(''));
+mobileDepartments.innerHTML=catalogDepartments.map(department=>
+  '<div class="mobile-department-menu-row"><a href="'+e(departmentLink(department))+'">'+e(department[0])+'</a></div>').join('');
+
+function activateCatalogDepartment(row) {
+  if (!row?.querySelector('.catalog-submenu')) return;
+  for (const button of catalogMenuDepartments.querySelectorAll('button')) {
+    const expanded=button.parentElement===row;
+    button.setAttribute('aria-expanded',String(expanded));
+    button.nextElementSibling.hidden=!expanded;
+  }
+}
+
+async function loadMenuDepartments() {
+  if (menuDepartmentsReady) return;
+  try {await loadCollectionDirectory();} catch {return;}
+  if (menuDepartmentsReady) return;
+  menuDepartmentsReady=true;
+  const desktopRows=catalogMenuDepartments.querySelectorAll('.catalog-department-menu-row');
+  const mobileRows=mobileDepartments.querySelectorAll('.mobile-department-menu-row');
+  catalogDepartments.forEach(([name,,slug],index)=>{
+    const children=departmentSubcategories(slug);
+    if (!children.length) return;
+    const links=children.map(child=>'<a href="'+e(catalogLink('',{c:child.slug}))+'">'+e(child.name)+'</a>').join('');
+    const id='header-department-'+index;
+    const label=e('Подразделы: '+name);
+    const row=desktopRows[index];
+    row.insertAdjacentHTML('beforeend','<button class="catalog-submenu-trigger" type="button" aria-label="'+label+
+      '" aria-expanded="false" aria-controls="'+id+'"><i class="chevron" aria-hidden="true"></i></button>'+
+      '<nav class="catalog-submenu" id="'+id+'" aria-label="'+label+'" hidden>'+links+'</nav>');
+    row.addEventListener('pointerenter',event=>{
+      if (event.pointerType==='mouse') activateCatalogDepartment(row);
+    });
+    row.firstElementChild.addEventListener('focus',()=>activateCatalogDepartment(row));
+    mobileRows[index].insertAdjacentHTML('beforeend','<details><summary aria-label="'+label+
+      '"><i class="chevron" aria-hidden="true"></i></summary><nav aria-label="'+label+'">'+links+'</nav></details>');
+  });
+  prepareLinks(catalogMenuDepartments);
+  prepareLinks(mobileDepartments);
+  if (!catalogPanel.hidden) activateCatalogDepartment(document.activeElement.closest('.catalog-department-menu-row') ||
+    [...desktopRows].find(row=>row.matches(':hover')) || desktopRows[0]);
+}
+
 mobileMenuTrigger.addEventListener('click',()=>{
   mobileMenu.showModal();
+  loadMenuDepartments();
   mobileMenuTrigger.setAttribute('aria-expanded','true');
 });
 mobileMenu.addEventListener('close',()=>mobileMenuTrigger.setAttribute('aria-expanded','false'));
@@ -2285,28 +2578,45 @@ mobileNavigation.addEventListener('change',event=>{
 });
 function showCatalogMenu(open) {
   catalogTrigger.setAttribute('aria-expanded',String(open));
-  catalogToggle.setAttribute('aria-expanded',String(open));
   catalogPanel.hidden=!open;
+  if (open) {
+    if (menuDepartmentsReady) activateCatalogDepartment(catalogMenuDepartments.querySelector('.catalog-department-menu-row'));
+    else loadMenuDepartments();
+  }
 }
-catalogMenu.addEventListener('pointerenter',event=>{
-  if (event.pointerType==='mouse' && hoverCatalog.matches) showCatalogMenu(true);
-});
-catalogMenu.addEventListener('pointerleave',()=>{
-  if (hoverCatalog.matches && !catalogPanel.contains(document.activeElement)) showCatalogMenu(false);
-});
-catalogTrigger.addEventListener('click',()=>showCatalogMenu(false));
-catalogToggle.addEventListener('click',()=>showCatalogMenu(catalogPanel.hidden));
+catalogTrigger.addEventListener('click',()=>showCatalogMenu(catalogPanel.hidden));
 catalogTrigger.addEventListener('keydown',event=>{
-  if (event.key!=='ArrowDown') return;
+  if (event.key!=='ArrowDown' || catalogPanel.hidden) return;
   event.preventDefault();
-  showCatalogMenu(true);
   catalogPanel.querySelector('a')?.focus();
 });
 catalogMenu.addEventListener('focusout',event=>{
-  if (!catalogMenu.contains(event.relatedTarget)) showCatalogMenu(false);
+  if (event.relatedTarget && !catalogMenu.contains(event.relatedTarget)) showCatalogMenu(false);
 });
 catalogPanel.addEventListener('click',event=>{
-  if (event.target.closest('a')) showCatalogMenu(false);
+  const button=event.target.closest('button[aria-controls]');
+  if (button) {
+    if (button.getAttribute('aria-expanded')==='true') {
+      button.setAttribute('aria-expanded','false');
+      button.nextElementSibling.hidden=true;
+    } else activateCatalogDepartment(button.parentElement);
+  } else if (event.target.closest('a')) {
+    showCatalogMenu(false);
+    catalogTrigger.focus();
+  }
+});
+catalogPanel.addEventListener('keydown',event=>{
+  const row=event.target.closest('.catalog-department-menu-row');
+  if (!row) return;
+  const submenu=row.querySelector('.catalog-submenu');
+  if (event.key==='ArrowRight' && submenu && !submenu.contains(event.target)) {
+    event.preventDefault();
+    activateCatalogDepartment(row);
+    submenu.querySelector('a')?.focus();
+  } else if (event.key==='ArrowLeft' && submenu?.contains(event.target)) {
+    event.preventDefault();
+    row.firstElementChild.focus();
+  }
 });
 document.addEventListener('pointerdown',event=>{
   if (!catalogMenu.contains(event.target) && !catalogPanel.hidden) showCatalogMenu(false);
@@ -2315,7 +2625,7 @@ document.addEventListener('keydown',event=>{
   if (event.key==='Escape' && !catalogPanel.hidden) {
     const focused=catalogMenu.contains(document.activeElement);
     showCatalogMenu(false);
-    if (focused) (hoverCatalog.matches?catalogTrigger:catalogToggle).focus();
+    if (focused) catalogTrigger.focus();
   }
 });
 site.backend.then(value=>{hasBackend=value;return render();});
@@ -2325,6 +2635,7 @@ function onRouteChange() {
   positions.set(previousRoute,window.scrollY);
   previousRoute=address;
   if (collectionPicker.open) collectionPicker.close();
+  showCatalogMenu(false);
   const catalogScroll=pendingCatalogScroll?.route===address ? pendingCatalogScroll : null;
   pendingCatalogScroll=null;
   hideSearchSuggestions();
