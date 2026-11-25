@@ -1131,7 +1131,7 @@ function itemPage(item, detail, variant, origin, choice) {
   const context = 'product='+item.id+(selected?'&variant='+selected[0]:'');
   const warranty = specs.find(([label])=>/гаранти/i.test(label))?.[1] ||
     description.match(/(?:гарантия|гарантийный срок)\s*(?:—|–|-|:)?\s*((?:от\s+)?\d+(?:\s*(?:–|-|до)\s*\d+)?\s*(?:месяц[а-я]*|год[а-я]*|лет))/i)?.[1];
-  const liveStock = variant?.stock ?? selected?.[3] ?? (hasBackend && !opts.length ? detail?.[5] : null);
+  const liveStock = variant?.stock ?? selected?.[3] ?? ((hasBackend || site.isRiva(item.id)) && !opts.length ? detail?.[5] : null);
   const from = catalogOrigin(origin);
   const filter = from ? getRoute(from).args : new URLSearchParams();
   const category = collectionCategory(selectedCategory(filter.get('c'))) || selectedSeries(filter.get('series'));
@@ -1155,13 +1155,13 @@ function itemPage(item, detail, variant, origin, choice) {
       <section class="product-visual" aria-label="Фотографии товара"><figure class="gallery">${pics[0]?photo(pics[0],item.name):photo('')}</figure>${selected?'<p class="small photo-caption">'+e(matchingPhoto ? 'Фото выбранного варианта' : 'Общее фото модели')+'</p>':''}
       ${pics.length>1 ? '<div class="gallery-thumbs">'+pics.slice(0,8).map((src,i)=>`<button type="button" data-photo="${e(src)}" data-variant-photo="${src===matchingPhoto}" aria-label="Фотография ${i+1}">${photo(src,'','loading="lazy"')}</button>`).join('')+'</div>':''}</section>
       <section class="product-info">
-      <p class="product-price">${selected?(priceOf(item,selected,variant)==null ? '<span class="small">Цена варианта уточняется</span>' : money(priceOf(item,selected,variant))):money(item.price,item.max)}</p>
+      <p class="product-price">${selected?(priceOf(item,selected,variant)==null && !site.isRiva(item.id) ? '<span class="small">Цена варианта уточняется</span>' : money(priceOf(item,selected,variant))):money(item.price,item.max)}</p>
       ${optionField}
       ${opts.length && !selected?'<p class="small" id="variant-help">Выберите вариант, чтобы добавить товар в корзину.</p>':''}
       <p class="small" id="variant-status" role="status" hidden></p>
       <div class="actions"><button class="btn" data-add="${item.id}" ${(opts.length && !selected) || liveStock===0?'disabled':''}>В корзину</button><a class="btn secondary" data-item-quote href="#/project?${context}">Запросить расчёт</a></div><p class="result" id="cart-result" role="status" hidden></p>
       ${finishLink?'<p class="product-finish-link"><a class="text-link" href="'+e(finishLink)+'">Мебель этой коллекции в такой же отделке</a></p>':''}
-      <div class="logistics"><p class="stock">${liveStock>0 ? 'Доступно: '+liveStock+' шт.' : ((variant?.backorder ?? item.backorder)?'Под заказ':'Наличие уточняется')}</p><p class="small">${e(logistics(item))}</p></div>
+      <div class="logistics"><p class="stock">${liveStock>0 ? 'Доступно: '+liveStock+' шт.' : site.isRiva(item.id) ? (liveStock===0?'Нет в наличии':'Наличие уточняется') : ((variant?.backorder ?? item.backorder)?'Под заказ':'Наличие уточняется')}</p><p class="small">${e(logistics(item))}</p></div>
       <p class="small"><a class="text-link" href="#/delivery?${context}">Рассчитать доставку этого товара</a></p>
       ${warranty?'<p class="small">Гарантия · '+e(warranty)+'</p>':''}</section></div>
       ${description?'<section class="spec product-description"><h2>О товаре</h2><div class="product-prose">'+descriptionParagraphs(description)+'</div></section>':''}
@@ -1181,7 +1181,20 @@ function saveCart() {
   site.save('basket',cart);
   document.querySelector('#cart-count').textContent = cart.reduce((sum,row)=>sum+row.qty,0);
 }
-const cartLimit = row => Math.min(row.cap || 999,999);
+const cartLimit = row => Math.max(1,Math.min(row.cap ?? 999,999));
+function syncRivaCart() {
+  let changed=false;
+  for (const row of cart) {
+    const riva=site.rivaVariant(row.id,row.choice||0);
+    if (!riva) continue;
+    const cap=riva.stock ?? 999;
+    const price=cap<row.qty ? null : riva.price;
+    if (row.cap!==cap || row.price!==price) {
+      row.cap=cap;row.price=price;changed=true;
+    }
+  }
+  if (changed) saveCart();
+}
 const cartItemDetails = row => [row.variant,row.sku?'Арт. '+row.sku:''].filter(Boolean).join(' · ');
 
 async function addProductToCart(control, id) {
@@ -1228,12 +1241,12 @@ async function addProductToCart(control, id) {
     const variation = option ? await site.variation(id,choice) : null;
     const key = id+':'+(choice || 0);
     const row = cart.find(entry=>entry.key===key);
-    const cap = variation?.stock ?? option?.[3] ?? (hasBackend && !options.length ? detail[5] : null) ?? 999;
+    const cap = variation?.stock ?? option?.[3] ?? ((hasBackend || site.isRiva(id)) && !options.length ? detail[5] : null) ?? 999;
     if (!cap || row?.qty>=Math.min(cap,999)) {
       notify(cap ? 'В корзине уже максимально доступное количество.' : 'Товар сейчас недоступен.');
       return;
     }
-    if (row) row.qty=Math.min(cap,999,row.qty+1);
+    if (row) { row.qty=Math.min(cap,999,row.qty+1); if (site.isRiva(id)) { row.price=priceOf(item,option,variation);row.cap=cap; } }
     else cart.push({key,id,choice:choice || 0,variant:option?.[1],name:item.name,sku:item.sku,
       image:variation?.image || item.image,price:priceOf(item,option,variation),qty:1,cap});
     if (origin) site.save('basket-origin',origin);
@@ -2010,7 +2023,9 @@ async function render(move = false, catalogScroll) {
     if (productChoice) variant = await site.variation(product,productChoice);
   } else await loadConfig;
   if (swatches) await swatches;
+  await site.rivaReady;
   if (current!==revision) return;
+  syncRivaCart();
   main.inert=false;
   main.removeAttribute('aria-busy');
   if (correctedRoute) replaceRoute(correctedRoute);
@@ -2160,7 +2175,7 @@ async function previewProductFinish(card, control) {
   const variant=option && await site.variation(id,option[0]);
   if (!isCurrent()) return;
   const amount=variant?.price ?? option?.[2];
-  if (amount!=null) price.textContent=money(amount);
+  if (amount!=null || site.isRiva(id)) price.textContent=money(amount??null);
   if (variant?.image) {
     const image=new Image();
     image.src=variant.image;
@@ -2491,6 +2506,8 @@ main.addEventListener('submit',async(event)=>{
   else if (form.dataset.drawnPlan) data.roomPlan=quotePlan;
   const status=form.querySelector('.result');
   if (!hasBackend) {
+    await site.rivaReady;
+    syncRivaCart();
     const body = mailBody(kind,data);
     const href = site.mail(requestTitle(kind,data),body);
     status.hidden=false;
