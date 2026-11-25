@@ -1603,7 +1603,7 @@ function contactsPage(showroom) {
   if (showroom) {
     const directions = contacts?.coordinates ?
       'https://yandex.ru/maps/?'+new URLSearchParams({rtext:'~'+[...contacts.coordinates].reverse().join(',')}) : mapLink;
-    return page('Шоурум',`<p class="intro">Приезжайте обсудить планировку офиса, модели и материалы. Если хотите посмотреть конкретную мебель или образец отделки, заранее назовите менеджеру серию или артикул.</p>
+    return page('Шоурум',`<p class="intro">Приезжайте посмотреть мебель вживую, посидеть в креслах и оценить, удобно ли вам за столом. В шоуруме можно сравнить образцы отделки и обсудить планировку офиса.</p>
       <section class="contacts-grid showroom-visit" aria-labelledby="showroom-visit-title"><div class="panel"><h2 id="showroom-visit-title">Спланируйте визит</h2>
         <dl class="contact-details"><div><dt>Адрес</dt><dd>${e(address)}</dd></div>
         ${hours?'<div><dt>График</dt><dd>'+e(hours)+'</dd></div>':''}${contacts?.stop?'<div><dt>Ближайшая остановка</dt><dd>'+e(contacts.stop)+'</dd></div>':''}</dl>

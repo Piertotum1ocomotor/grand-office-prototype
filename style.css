@@ -226,10 +226,13 @@ dd{margin:0}
 .filters-grid label{min-width:0}
 .filters-grid .btn{min-height:45px}
 .catalog-heading{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
-.catalog-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
-.catalog-grid .product-card{display:flex;flex-direction:column;min-height:139px}
-.catalog-grid h3{font-size:18px;margin-bottom:8px}
+.catalog-grid{--catalog-photo-height:196px;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.catalog-grid .product-photo :is(img,.no-photo){height:var(--catalog-photo-height);min-height:0}
+.catalog-grid .product-card{display:flex;flex-direction:column;min-height:128px;padding:12px 13px 14px}
+.catalog-grid h3{font-size:17px;margin-bottom:6px;overflow-wrap:anywhere}
+.catalog-grid .meta{margin-block:5px 9px;overflow-wrap:anywhere}
 .catalog-grid .price{margin-top:auto}
+@media(min-width:1150px){.catalog-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .no-photo{min-height:160px;display:grid;place-items:center;color:var(--muted);font-size:13px}
 .pagination{display:flex;align-items:center;justify-content:center;gap:16px;margin-block:24px}
 .gallery{margin:0}
@@ -250,7 +253,7 @@ dialog{max-width:min(92vw,410px);border:1px solid var(--line);border-radius:12px
 dialog::backdrop{background:#241b1850}
 dialog h2{font-size:27px;margin-bottom:15px}
 .city-help{margin:8px 0 15px}
-@media(max-width:1050px){.header{gap:12px}.header .nav{gap:12px}.catalog-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:1050px){.header{gap:12px}.header .nav{gap:12px}}
 @media(max-width:720px){
  .topbar{min-height:37px;font-size:12px}.top-links{display:none}
  .header{grid-template-columns:1fr auto;grid-template-areas:"logo bag" "search search" "nav nav";gap:7px;padding-block:10px}
@@ -260,9 +263,9 @@ dialog h2{font-size:27px;margin-bottom:15px}
  .four,.steps{grid-template-columns:repeat(2,minmax(0,1fr))}.four .category span{font-size:14px}
  .service-strip{align-items:flex-start;flex-direction:column;gap:10px;padding:16px}
  .footer-inner{grid-template-columns:1fr 1fr;font-size:14px}.footer-inner div:last-child{overflow-wrap:anywhere}
- .catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .catalog-grid{--catalog-photo-height:136px;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
  .filters-grid{grid-template-columns:1fr 1fr;gap:8px}.catalog-grid h3{font-size:15px}
- .catalog-grid .product-card{min-height:130px}
+ .catalog-grid .product-card{min-height:122px;padding:10px}
 }
 
 @media(min-width:721px) and (max-width:950px){.filters-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
@@ -319,7 +322,6 @@ main:focus{outline:none}
 .catalog-directory nav details div{padding:0 0 4px 12px}
 .catalog-directory nav a[aria-current]{color:var(--brand-dark);background:var(--brand-tint);border-radius:5px}
 .catalog-directory nav a:hover{color:var(--brand-dark)}
-.catalog-shell .catalog-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
 .catalog-shell .filters-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 .kit-hero img{max-height:370px;min-height:270px;object-position:50% 57%}
 .kit-hero .actions{align-items:center;gap:13px}
@@ -409,7 +411,6 @@ main:focus{outline:none}
  .catalog-directory nav{max-height:45vh}
 }
 @media(max-width:720px){
- .catalog-shell .catalog-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
  .service-facts,.contacts-grid,.service-details,.planner-grid,.case-highlight{grid-template-columns:1fr}
  .service-facts{gap:8px}
  .service-facts>div{padding:13px}
